@@ -1,0 +1,12 @@
+{
+  "_ajuda": "Nome da coluna do kanban do Revvy -> evento enviado à Meta. crm = lead de formulário da Meta, whatsapp = anúncio de clique para WhatsApp, site = demais origens. null = não envia nessa rota. Maiúsculas e acentos são ignorados. A ordem importa: se um card pular etapas, as anteriores (desta lista, até a primeira marcada com funil: true) são enviadas antes, como a Meta pede.",
+  "etapas": [
+    { "coluna": "Novo Lead",           "crm": "Lead",                "whatsapp": "LeadSubmitted",    "site": "Lead",               "funil": true },
+    { "coluna": "Lead Qualificado",    "crm": "Lead Qualificado",    "whatsapp": "QualifiedLead",    "site": "QualifiedLead",      "funil": true },
+    { "coluna": "Reunião Agendada",    "crm": "Reuniao Agendada",    "whatsapp": null,               "site": "Schedule",           "funil": true },
+    { "coluna": "Proposta Enviada",    "crm": "Proposta Enviada",    "whatsapp": "InitiateCheckout", "site": "InitiateCheckout",   "funil": true },
+    { "coluna": "Ganho",               "crm": "Venda",               "whatsapp": "Purchase",         "site": "Purchase",           "funil": true, "enviar_valor": true },
+    { "coluna": "Lead Desqualificado", "crm": "Lead Desqualificado", "whatsapp": null,               "site": "LeadDesqualificado" },
+    { "coluna": "Perdido",             "crm": "Negocio Perdido",     "whatsapp": null,               "site": "NegocioPerdido" }
+  ]
+}

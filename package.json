@@ -1,0 +1,13 @@
+{
+  "name": "revvy-meta",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Envia as etapas do funil do Revvy para o Gerenciador de Eventos da Meta (Conversions API)",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": { "node": ">=20" }
+}
