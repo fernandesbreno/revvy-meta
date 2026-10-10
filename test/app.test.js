@@ -52,6 +52,7 @@ before(async () => {
       let m;
       if ((m = u.pathname.match(/^\/api\/v1\/deals\/([^/]+)\/stage-history$/))) return send(200, { success: true, data: { history: histories[m[1]] || [] } });
       if ((m = u.pathname.match(/^\/api\/v1\/deals\/([^/]+)$/))) return deals[m[1]] ? send(200, { success: true, data: deals[m[1]] }) : send(404, {});
+      if (u.pathname === '/api/v1/tags') return send(200, { success: true, data: [{ id: 't-ana', name: 'Ana' }, { id: 't-eli', name: 'Eli' }, { id: 't-ruana', name: 'Ruana' }] });
       if (u.pathname === '/api/v1/columns') return send(200, { success: true, pipelines: [{ id: 'p1', name: 'Comercial', columns: [{ id: 'col-vendido', name: 'Venda Concluída' }, { id: 'col-novo', name: 'Novo Lead' }] }], count: 1 });
       if (u.pathname === '/api/v1/deals') return send(200, { success: true, data: Object.values(deals), pagination: { has_more: false } });
       if ((m = u.pathname.match(/^\/api\/v1\/contacts\/([^/]+)$/))) return contacts[m[1]] ? send(200, { success: true, data: contacts[m[1]] }) : send(404, {});
@@ -400,6 +401,10 @@ test('distribuição: rodízio exato, só negócios novos, contato que volta fic
     assert.deepEqual(tr[0].body, { conversation_id: 'conv0', user_id: 'u-ana' });
     assert.equal(tr.length, 9, 'conversa encerrada não é transferida');
     assert.deepEqual(app.store.state.distribuicao.contagem, { Ana: 3, Eli: 3, Ruana: 3 });
+    const tags = revvyWrites.filter((w) => w.path === '/api/v1/contacts/tags');
+    assert.deepEqual(tags[0].body, { contact_id: 'k0', tag_ids: ['t-ana'] });
+    assert.deepEqual(tags[1].body, { contact_id: 'k1', tag_ids: ['t-eli'] });
+    assert.equal(tags.length, 9);
 
     // k1 (Eli) volta a falar: fica com a Eli e a vez continua na Ana
     revvyWrites = [];

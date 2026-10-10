@@ -112,6 +112,25 @@ export class Distributor {
     for (const c of convs) {
       await this.revvy.request('/api/v1/conversations/transfer', 0, { method: 'POST', body: { conversation_id: c.id, user_id: who.id } });
     }
+    // etiqueta com o nome da atendente, aplicada pela API (a aplicada por workflow não chega ao WhatsApp Business)
+    const tagId = this.cfg.distribuir.etiquetas && await this.tagFor(who.nome);
+    if (tagId && !(contact.tags || []).some((t) => t.id === tagId)) {
+      try {
+        await this.revvy.request('/api/v1/contacts/tags', 0, { method: 'POST', body: { contact_id: deal.contact_id, tag_ids: [tagId] } });
+      } catch (err) {
+        this.logger.warn(`[distribuição] não consegui pôr a etiqueta ${who.nome}: ${err.message}`);
+      }
+    }
+  }
+
+  /** id da etiqueta com o mesmo nome da atendente (maiúsculas e acentos não importam). */
+  async tagFor(nome) {
+    if (!this.tags) {
+      const r = await this.revvy.request('/api/v1/tags');
+      this.tags = r.data || r.tags || [];
+    }
+    const norm = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+    return this.tags.find((t) => norm(t.name) === norm(nome))?.id || null;
   }
 
   async run({ now = Date.now() } = {}) {
