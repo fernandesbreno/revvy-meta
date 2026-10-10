@@ -92,6 +92,14 @@ export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const cfg = loadConfig();
+  if (cfg.meta.igAccountId && !cfg.meta.igDatasetId) {
+    try {
+      cfg.meta.igDatasetId = await new MetaClient(cfg.meta).instagramDataset();
+      console.log(`[instagram] usando o conjunto de dados ${cfg.meta.igDatasetId}, ligado à conta do Instagram`);
+    } catch (err) {
+      console.error(`[instagram] não consegui obter o conjunto de dados do Instagram (o token precisa da permissão instagram_manage_events): ${err.message}`);
+    }
+  }
   const app = createApp({ cfg });
   await app.start();
   console.log(`revvy-meta ouvindo na porta ${cfg.port}${cfg.meta.testEventCode ? ' (MODO TESTE)' : ''}`);

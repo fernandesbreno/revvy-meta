@@ -130,6 +130,19 @@ export class MetaClient {
     return this.cfg.datasetId;
   }
 
+  /**
+   * Pede à Meta o conjunto de dados ligado à conta do Instagram (a Meta exige esse para eventos do Direct).
+   * Se já existir, a Meta devolve o mesmo id; não cria duplicado.
+   */
+  async instagramDataset() {
+    const { graphUrl, graphVersion, accessToken, igAccountId } = this.cfg;
+    const url = `${graphUrl}/${graphVersion}/${igAccountId}/dataset?access_token=${encodeURIComponent(accessToken)}`;
+    const res = await this.fetch(url, { method: 'POST' });
+    const text = await res.text();
+    if (!res.ok) throw new Error(`Meta respondeu ${res.status}: ${text.slice(0, 300)}`);
+    return JSON.parse(text).id;
+  }
+
   async send(events, { route, attempt = 0 } = {}) {
     const { graphUrl, graphVersion, accessToken, testEventCode } = this.cfg;
     const datasetId = this.datasetFor(route);

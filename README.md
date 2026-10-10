@@ -47,7 +47,7 @@ Proteções:
    | `WHATSAPP_BUSINESS_ACCOUNT_ID` | Opcional, só para anúncios de clique para WhatsApp com `ctwa_clid` |
    | `FACEBOOK_PAGE_ID` / `META_DATASET_ID_MESSENGER` | Opcional, só se usar o Messenger |
 4. **Guardar o histórico:** na aba **Mounts**, adicione um **Volume** com *Mount Path* `/data`. É onde fica o registro do que já foi enviado.
-5. **Endereço:** na aba **Domains**, confira se existe um domínio (o Easypanel cria um automaticamente) com a porta **3000**. Clique em **Deploy**.
+5. **Endereço:** na aba **Domains**, confira se existe um domínio (o Easypanel cria um automaticamente) com a mesma porta que aparece no log "ouvindo na porta" (o Easypanel costuma usar **80**). Clique em **Deploy**.
    - Teste abrindo `https://SEU-DOMINIO/health`. Deve aparecer `"ok": true`.
 6. **Webhook no Revvy:** em Revvy → Configurações → Integrações → Webhooks, crie um webhook com a URL
    `https://SEU-DOMINIO/webhooks/revvy`, marque o evento de **movimentação de card** (e de negócio ganho/perdido, se existirem) e copie o **secret** para `REVVY_WEBHOOK_SECRET`. Clique em **Deploy** de novo no Easypanel.
