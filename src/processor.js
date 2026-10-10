@@ -40,6 +40,7 @@ export class Processor {
           const result = await this.process(job);
           this.store.removePending(job.id);
           this.store.log({ negocio: job.dealId, ...result });
+          if (result.resultado === 'enviado') this.logger.log(`[enviado] negócio ${job.dealId}: ${result.etapa} → ${result.eventos.join(', ')} (rota ${result.rota}${result.teste ? ', teste' : ''})`);
         } catch (err) {
           job.attempts += 1;
           const delay = RETRY_DELAYS_S[job.attempts - 1];
