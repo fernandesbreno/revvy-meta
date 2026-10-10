@@ -6,6 +6,7 @@ import path from 'node:path';
  *  - sent: event_id -> epoch do envio (evita duplicados)
  *  - pending: trabalhos ainda não concluídos (sobrevivem a reinícios)
  *  - log: últimos 200 resultados, sem dados pessoais
+ *  - leads: ids dos leads de formulário já importados e até quando já foi lido
  */
 export class Store {
   constructor(dir) {
@@ -19,6 +20,7 @@ export class Store {
     this.state.sent ||= {};
     this.state.pending ||= [];
     this.state.log ||= [];
+    this.state.leads ||= { importados: {}, desde: 0 }; // leads de formulário já trazidos para o Revvy
     this.testSent = new Set(); // envios em modo teste: só na memória, para não repetir a cada reconciliação
     this.prune();
   }

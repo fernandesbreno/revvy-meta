@@ -55,6 +55,14 @@ export function loadConfig(env = process.env) {
       intervalMinutes: Number(env.RECONCILIAR_A_CADA_MINUTOS ?? 60),
       days: Number(env.RECONCILIAR_DIAS || 30),
     },
+    leads: {
+      pageId: String(env.LEADS_PAGE_ID || '').trim(),
+      token: String(env.META_LEADS_TOKEN || env.META_ACCESS_TOKEN).trim(),
+      intervalMinutes: Number(env.LEADS_A_CADA_MINUTOS ?? 2),
+      daysBack: Number(env.LEADS_DIAS_ATRAS || 0),
+      sector: env.LEADS_SETOR || 'Comercial',
+      column: env.LEADS_COLUNA || 'Novo Lead',
+    },
     fillSkippedStages: env.PREENCHER_ETAPAS_PULADAS !== 'false',
     stages: loadStages(env),
   };

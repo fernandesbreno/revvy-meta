@@ -5,12 +5,14 @@ import { RevvyClient, parseWebhook, verifySignature } from './revvy.js';
 import { MetaClient } from './meta.js';
 import { Processor } from './processor.js';
 import { reconcile } from './reconcile.js';
+import { LeadsImporter } from './leads.js';
 
 export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
   const store = new Store(cfg.dataDir);
   const revvy = new RevvyClient(cfg.revvy, { fetchImpl });
   const meta = new MetaClient(cfg.meta, { fetchImpl });
   const processor = new Processor({ cfg, store, revvy, meta, logger });
+  const leads = cfg.leads.pageId ? new LeadsImporter({ cfg, store, revvy, fetchImpl, logger }) : null;
 
   const json = (res, status, obj) => {
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -29,6 +31,7 @@ export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
       return json(res, 200, {
         pendentes: store.state.pending.map(({ dealId, columnName, attempts, lastError }) => ({ dealId, columnName, attempts, lastError })),
         enviados_total: Object.keys(store.state.sent).length,
+        leads_formulario_importados: Object.keys(store.state.leads.importados).length,
         ultimos: store.state.log.slice(0, 50),
       });
     }
@@ -67,6 +70,7 @@ export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
   });
 
   let reconcileTimer = null;
+  let leadsTimer = null;
   let reconciling = false;
   const runReconcile = async () => {
     if (reconciling) return; // a rodada anterior ainda não terminou
@@ -85,8 +89,13 @@ export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
     store,
     processor,
     runReconcile,
+    leads,
     start() {
       processor.start();
+      if (leads && cfg.leads.intervalMinutes > 0) {
+        setTimeout(() => leads.run(), 5_000);
+        leadsTimer = setInterval(() => leads.run(), cfg.leads.intervalMinutes * 60_000);
+      }
       if (cfg.reconcile.intervalMinutes > 0) {
         setTimeout(runReconcile, 60_000);
         reconcileTimer = setInterval(runReconcile, cfg.reconcile.intervalMinutes * 60_000);
@@ -96,6 +105,7 @@ export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
     stop() {
       processor.stop();
       clearInterval(reconcileTimer);
+      clearInterval(leadsTimer);
       return new Promise((r) => server.close(r));
     },
   };
@@ -115,5 +125,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const app = createApp({ cfg });
   await app.start();
   console.log(`revvy-meta ouvindo na porta ${cfg.port}${cfg.meta.testEventCode ? ' (MODO TESTE)' : ''}`);
+  console.log(cfg.leads.pageId
+    ? `[formulário] trazendo leads dos formulários da página ${cfg.leads.pageId} para "${cfg.leads.column}" a cada ${cfg.leads.intervalMinutes} min`
+    : '[formulário] importação de leads de formulário desligada (preencha LEADS_PAGE_ID)');
   for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => app.stop().then(() => process.exit(0)));
 }

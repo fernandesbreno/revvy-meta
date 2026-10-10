@@ -65,24 +65,53 @@ export class RevvyClient {
     this.fetch = fetchImpl;
   }
 
-  async request(pathAndQuery, attempt = 0) {
+  async request(pathAndQuery, attempt = 0, { method = 'GET', body, headers = {}, allow = [] } = {}) {
     const res = await this.fetch(this.baseUrl + pathAndQuery, {
-      headers: { Authorization: `Bearer ${this.apiKey}`, Accept: 'application/json' },
+      method,
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`, Accept: 'application/json',
+        ...(body ? { 'Content-Type': 'application/json' } : {}), ...headers,
+      },
+      body: body ? JSON.stringify(body) : undefined,
     });
     if (res.status === 429 && attempt < 5) {
       const wait = Number(res.headers.get('retry-after') || 2) * 1000;
       await sleep(wait);
-      return this.request(pathAndQuery, attempt + 1);
+      return this.request(pathAndQuery, attempt + 1, { method, body, headers, allow });
     }
     if (res.status >= 500 && attempt < 3) {
       await sleep(1000 * 2 ** attempt);
-      return this.request(pathAndQuery, attempt + 1);
+      return this.request(pathAndQuery, attempt + 1, { method, body, headers, allow });
     }
     const text = await res.text();
     let json;
     try { json = JSON.parse(text); } catch { json = { raw: text }; }
-    if (!res.ok) throw new Error(`Revvy ${pathAndQuery} respondeu ${res.status}: ${text.slice(0, 200)}`);
+    if (allow.includes(res.status)) return { ...json, http_status: res.status };
+    if (!res.ok) throw new Error(`Revvy ${method} ${pathAndQuery.split('?')[0]} respondeu ${res.status}: ${text.slice(0, 200)}`);
     return json;
+  }
+
+  /** Cria o contato; se o telefone já existir (409), devolve o id do existente. */
+  async upsertContact(contact, idempotencyKey) {
+    const r = await this.request('/api/v1/contacts', 0, {
+      method: 'POST', body: contact, headers: { 'Idempotency-Key': idempotencyKey }, allow: [409],
+    });
+    if (r.http_status !== 409) return { id: (r.data || r.contact || r).id, created: true };
+    const existing = r.contact_id || r.existing_id || r.id || r.data?.id || r.data?.contact_id || r.error?.contact_id || r.error?.details?.contact_id;
+    if (existing) return { id: existing, created: false };
+    const found = await this.request(`/api/v1/contacts?search=${encodeURIComponent(contact.phone)}&limit=5`);
+    const digits = String(contact.phone).replace(/\D/g, '');
+    const match = (found.data || []).find((c) => String(c.phone || '').replace(/\D/g, '').endsWith(digits.slice(-8)));
+    if (!match) throw new Error('Revvy disse que o contato já existe, mas não encontrei o id dele');
+    return { id: match.id, created: false };
+  }
+
+  async updateContact(id, fields) {
+    return this.request(`/api/v1/contacts/${encodeURIComponent(id)}`, 0, { method: 'PUT', body: fields });
+  }
+
+  async createDeal(payload, idempotencyKey) {
+    return this.request('/api/v1/deals/create', 0, { method: 'POST', body: payload, headers: { 'Idempotency-Key': idempotencyKey } });
   }
 
   async getDeal(id) {

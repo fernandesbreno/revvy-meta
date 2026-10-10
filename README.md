@@ -58,6 +58,23 @@ Proteções:
 3. Confira também `https://SEU-DOMINIO/status?token=SEU_ADMIN_TOKEN`: mostra os últimos envios, o que foi ignorado e por quê (sem dados pessoais).
 4. Funcionou? Apague `META_TEST_EVENT_CODE` e clique em **Deploy**. A partir daí vai para produção.
 
+## Leads dos formulários da Meta → Revvy
+Com `LEADS_PAGE_ID` preenchido, o programa busca a cada 2 minutos os leads novos dos formulários de anúncio da página. Para cada um:
+1. cria o contato no Revvy, ou acha o existente pelo telefone, e grava o ID do lead no campo `meta_lead_id`;
+2. cria o card na coluna **Novo Lead** do setor **Comercial**, com as respostas do formulário nas notas.
+
+A partir daí, cada etapa desse card vai para a Meta pela rota CRM. É essa rota que permite otimizar campanhas de cadastro para **leads qualificados**.
+
+| Variável | Padrão | Para que serve |
+|---|---|---|
+| `LEADS_PAGE_ID` | vazio (desligado) | ID da página do Facebook dos formulários |
+| `META_LEADS_TOKEN` | usa `META_ACCESS_TOKEN` | Token com as permissões `leads_retrieval`, `pages_show_list`, `pages_read_engagement` e `pages_manage_metadata`, e acesso à página. Um token de usuário do sistema no Gerenciador de Negócios serve |
+| `LEADS_A_CADA_MINUTOS` | `2` | Intervalo da busca |
+| `LEADS_DIAS_ATRAS` | `0` | Na primeira execução, quantos dias para trás importar. Com `0`, só os leads que chegarem a partir de agora |
+| `LEADS_SETOR` / `LEADS_COLUNA` | `Comercial` / `Novo Lead` | Onde o card é criado |
+
+Leads sem telefone são ignorados, porque o Revvy exige telefone para criar o card. Se o token não tiver permissão, o log mostra uma linha `[formulário]` com o motivo e o resto do programa continua funcionando.
+
 ## Etapas do funil
 O arquivo [`etapas.json`](etapas.json) liga o nome de cada coluna do kanban ao evento da Meta. Para mudar, edite o arquivo aqui no GitHub e clique em **Deploy** no Easypanel. Maiúsculas e acentos não importam.
 

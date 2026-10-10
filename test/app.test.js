@@ -9,10 +9,11 @@ import { loadConfig } from '../src/config.js';
 import { createApp } from '../src/server.js';
 import { verifySignature, parseWebhook } from '../src/revvy.js';
 import { reconcile } from '../src/reconcile.js';
+import { leadContact } from '../src/leads.js';
 
 const SECRET = 'segredo-teste';
 const sha = (v) => crypto.createHash('sha256').update(v).digest('hex');
-const quiet = { log() {}, warn() {}, error() {} };
+const quiet = { log() {}, warn() {}, error: process.env.DEBUG ? console.error : () => {} };
 
 // ---- Revvy + Meta simulados ----
 let metaCalls = [];
@@ -21,6 +22,8 @@ let rejectWhatsapp = false;
 let deals = {};
 let contacts = {};
 let histories = {};
+let formLeads = [];
+let revvyWrites = [];
 let mock;
 let mockUrl;
 
@@ -32,11 +35,29 @@ before(async () => {
       const send = (s, o) => { res.writeHead(s, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
       const u = new URL(req.url, 'http://x');
       if (req.headers.authorization !== 'Bearer chave-revvy' && u.pathname.startsWith('/api')) return send(401, { success: false });
+      if (req.method !== 'GET' && u.pathname.startsWith('/api/')) {
+        const b = body ? JSON.parse(body) : {};
+        revvyWrites.push({ method: req.method, path: u.pathname, body: b, key: req.headers['idempotency-key'] });
+        if (u.pathname === '/api/v1/contacts') {
+          const existing = Object.values(contacts).find((c) => c.phone === b.phone);
+          if (existing) return send(409, { success: false, error: 'CONFLICT', contact_id: existing.id });
+          return send(201, { success: true, data: { id: 'novo', ...b } });
+        }
+        if (u.pathname.startsWith('/api/v1/contacts/')) return send(200, { success: true });
+        if (u.pathname === '/api/v1/deals/create') return send(200, { success: true, deal: { id: 'deal-novo' } });
+      }
       let m;
       if ((m = u.pathname.match(/^\/api\/v1\/deals\/([^/]+)\/stage-history$/))) return send(200, { success: true, data: { history: histories[m[1]] || [] } });
       if ((m = u.pathname.match(/^\/api\/v1\/deals\/([^/]+)$/))) return deals[m[1]] ? send(200, { success: true, data: deals[m[1]] }) : send(404, {});
       if (u.pathname === '/api/v1/deals') return send(200, { success: true, data: Object.values(deals), pagination: { has_more: false } });
       if ((m = u.pathname.match(/^\/api\/v1\/contacts\/([^/]+)$/))) return contacts[m[1]] ? send(200, { success: true, data: contacts[m[1]] }) : send(404, {});
+      if (req.method === 'GET' && u.pathname.startsWith('/graph/')) {
+        if (u.searchParams.get('fields') === 'access_token') return send(200, { access_token: 'tok-pagina', id: '555' });
+        if (u.searchParams.get('access_token') !== 'tok-pagina') return send(403, { error: { message: 'sem leads_retrieval' } });
+        if (u.pathname.endsWith('/555/leadgen_forms')) return send(200, { data: [{ id: 'f1', name: 'Avaliação grátis' }] });
+        if (u.pathname.endsWith('/f1/leads')) return send(200, { data: formLeads });
+        return send(404, {});
+      }
       if (u.pathname.startsWith('/graph/')) {
         if (metaFail > 0) { metaFail--; return send(500, { error: 'temporário' }); }
         if (rejectWhatsapp && body.includes('"messaging_channel":"whatsapp"')) return send(400, { error: { message: 'sem permissão' } });
@@ -81,6 +102,7 @@ beforeEach(() => {
   deals = { d1: { id: 'd1', value: 2500, created_at: ago(120), contact: { id: 'c1', name: 'João da Silva', phone: '5511999999999', email: 'Joao@Exemplo.com' }, column: { name: 'Venda Concluída' } } };
   contacts = { c1: { id: 'c1', name: 'João da Silva', phone: '5511999999999', email: 'Joao@Exemplo.com', city: 'São Paulo', custom_fields: { meta_lead_id: '1234567890123456' } } };
   histories = {};
+  formLeads = []; revvyWrites = [];
 });
 
 test('assinatura: aceita a correta, recusa errada e antiga', () => {
@@ -297,5 +319,54 @@ test('/status exige token e não expõe dados pessoais', async () => {
     const s = await (await fetch(appUrl + '/status?token=adm')).text();
     assert.match(s, /enviado/);
     assert.doesNotMatch(s, /exemplo\.com|5511999999999/);
+  } finally { await stopApp(); }
+});
+
+const lead = (id, fields) => ({ id, created_time: new Date().toISOString(), field_data: Object.entries(fields).map(([name, v]) => ({ name, values: [v] })) });
+
+test('leadContact entende os campos do formulário', () => {
+  assert.deepEqual(leadContact(lead('1', { full_name: 'Ana Souza', phone_number: '+55 (85) 98888-7777', email: 'ana@x.com' })),
+    { name: 'Ana Souza', phone: '5585988887777', email: 'ana@x.com' });
+  assert.equal(leadContact(lead('1', { telefone: '85 98888-7777', first_name: 'Ana', last_name: 'S' })).phone, '5585988887777');
+});
+
+test('leads de formulário viram contato com meta_lead_id e card em Novo Lead, sem duplicar', async () => {
+  formLeads = [
+    lead('2131076834161302', { full_name: 'Ana Souza', phone_number: '+5585988887777', 'qual_tratamento?': 'Depilação' }),
+    lead('2131076834161303', { full_name: 'João da Silva', phone_number: '5511999999999' }),
+    lead('2131076834161304', { full_name: 'Sem Telefone', email: 'a@b.com' }),
+  ];
+  await startApp({ LEADS_PAGE_ID: '555', LEADS_A_CADA_MINUTOS: '0' });
+  try {
+    const r = await app.leads.run();
+    assert.deepEqual(r, { forms: 1, imported: 2, failed: 0 });
+    const novo = revvyWrites.filter((w) => w.path === '/api/v1/contacts');
+    assert.deepEqual(novo[0].body.custom_fields, { meta_lead_id: '2131076834161302' });
+    // João já existia: o id do lead é gravado no contato dele antes de criar o card
+    const upd = revvyWrites.find((w) => w.method === 'PUT');
+    assert.equal(upd.path, '/api/v1/contacts/c1');
+    assert.deepEqual(upd.body.custom_fields, { meta_lead_id: '2131076834161303' });
+    const cards = revvyWrites.filter((w) => w.path === '/api/v1/deals/create');
+    assert.equal(cards.length, 2);
+    assert.deepEqual(cards[0].body.kanban, { sector_name: 'Comercial', column_name: 'Novo Lead' });
+    assert.equal(cards[0].key, 'meta-lead-card-2131076834161302');
+    assert.match(cards[0].body.notes[1], /qual_tratamento\?: Depilação/);
+    assert.ok(revvyWrites.indexOf(upd) < revvyWrites.indexOf(cards[1]), 'campo gravado antes do card');
+
+    revvyWrites = [];
+    const again = await app.leads.run();
+    assert.equal(again.imported, 0);
+    assert.equal(revvyWrites.length, 0, 'não importa de novo');
+    const s = await (await fetch(appUrl + '/status?token=adm')).text();
+    assert.doesNotMatch(s, /Ana Souza|5585988887777/);
+  } finally { await stopApp(); }
+});
+
+test('leads de formulário: token sem permissão não quebra o app', async () => {
+  await startApp({ LEADS_PAGE_ID: '777', LEADS_A_CADA_MINUTOS: '0' });
+  try {
+    const r = await app.leads.run();
+    assert.ok(r.error);
+    assert.equal(revvyWrites.length, 0);
   } finally { await stopApp(); }
 });
