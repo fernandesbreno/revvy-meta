@@ -69,6 +69,8 @@ export function loadConfig(env = process.env) {
       intervalSeconds: Number(env.DISTRIBUIR_A_CADA_SEGUNDOS ?? 20),
       column: env.DISTRIBUIR_COLUNA || 'Novo Lead',
       columnId: env.DISTRIBUIR_COLUNA_ID || '',
+      // colunas para onde o card pode ir antes de ganhar dona (ex.: automação "Em Atendimento" quando o lead responde rápido)
+      colunasSemDona: String(env.DISTRIBUIR_COLUNAS_SEM_DONA ?? 'Em Atendimento').split(',').map((c) => c.trim()).filter(Boolean),
       etiquetas: env.DISTRIBUIR_ETIQUETAS !== 'false',
       soWhatsapp: env.DISTRIBUIR_SO_WHATSAPP !== 'false',
       horario: parseHours(env.DISTRIBUIR_HORARIO),

@@ -64,19 +64,30 @@ export class Distributor {
     return (this.store.state.distribuicao ||= { inicio: 0, vez: 0, feitos: {}, contatos: {}, contagem: {} });
   }
 
-  async resolveColumn() {
-    if (this.columnId) return this.columnId;
+  async columnsList() {
     const r = await this.revvy.request('/api/v1/columns');
     // a API devolve { pipelines: [{ columns: [...] }] }
-    const list = [...(r.data || r.columns || []), ...(r.pipelines || []).flatMap((p) => p.columns || [])];
-    const want = this.cfg.distribuir.column.toLowerCase();
-    const col = list.find((c) => String(c.name || '').toLowerCase() === want);
-    if (!col) throw new Error(`coluna "${this.cfg.distribuir.column}" não encontrada no Revvy`);
-    this.columnId = col.id;
-    return col.id;
+    return [...(r.data || r.columns || []), ...(r.pipelines || []).flatMap((p) => p.columns || [])];
   }
 
-  async newDeals(columnId) {
+  async resolveColumn() {
+    if (this.columnId && this.extraColumnIds) return this.columnId;
+    const list = await this.columnsList();
+    const byName = (name) => list.find((c) => String(c.name || '').toLowerCase() === name.toLowerCase());
+    if (!this.columnId) {
+      const col = byName(this.cfg.distribuir.column);
+      if (!col) throw new Error(`coluna "${this.cfg.distribuir.column}" não encontrada no Revvy`);
+      this.columnId = col.id;
+    }
+    this.extraColumnIds = (this.cfg.distribuir.colunasSemDona || []).map((n) => {
+      const c = byName(n);
+      if (!c) this.logger.warn(`[distribuição] coluna "${n}" não encontrada no Revvy; ignorada`);
+      return c?.id;
+    }).filter((id) => id && id !== this.columnId);
+    return this.columnId;
+  }
+
+  async dealsIn(columnId) {
     const out = [];
     for (let offset = 0; offset < 2000; offset += 100) {
       const r = await this.revvy.request(`/api/v1/deals?column_id=${encodeURIComponent(columnId)}&limit=100&offset=${offset}`);
@@ -84,9 +95,25 @@ export class Distributor {
       out.push(...page);
       if (page.length < 100 || r.pagination?.has_more === false) break;
     }
+    return out.filter((d) => {
+      const col = d.column_id ?? d.column?.id;
+      return col ? col === columnId : true;
+    });
+  }
+
+  /**
+   * Negócios novos ainda sem atendente: os da coluna de entrada e os que já pularam para uma coluna
+   * seguinte sem ganhar dona (o lead respondeu antes da distribuição e a automação moveu o card).
+   */
+  async newDeals(columnId) {
+    const out = await this.dealsIn(columnId);
+    for (const id of this.extraColumnIds || []) {
+      for (const d of await this.dealsIn(id)) if (!(d.assigned_user_id || d.assigned_user?.id)) out.push(d);
+    }
     const st = this.st;
+    const seen = new Set();
     return out
-      .filter((d) => (d.column_id ? d.column_id === columnId : true))
+      .filter((d) => !seen.has(d.id) && seen.add(d.id))
       .filter((d) => !st.feitos[d.id] && revvyTime(d.created_at) >= st.inicio)
       .sort((a, b) => revvyTime(a.created_at) - revvyTime(b.created_at));
   }

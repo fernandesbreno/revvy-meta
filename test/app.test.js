@@ -53,7 +53,7 @@ before(async () => {
       if ((m = u.pathname.match(/^\/api\/v1\/deals\/([^/]+)\/stage-history$/))) return send(200, { success: true, data: { history: histories[m[1]] || [] } });
       if ((m = u.pathname.match(/^\/api\/v1\/deals\/([^/]+)$/))) return deals[m[1]] ? send(200, { success: true, data: deals[m[1]] }) : send(404, {});
       if (u.pathname === '/api/v1/tags') return send(200, { success: true, data: [{ id: 't-ana', name: 'Ana' }, { id: 't-eli', name: 'Eli' }, { id: 't-ruana', name: 'Ruana' }] });
-      if (u.pathname === '/api/v1/columns') return send(200, { success: true, pipelines: [{ id: 'p1', name: 'Comercial', columns: [{ id: 'col-vendido', name: 'Venda Concluída' }, { id: 'col-novo', name: 'Novo Lead' }] }], count: 1 });
+      if (u.pathname === '/api/v1/columns') return send(200, { success: true, pipelines: [{ id: 'p1', name: 'Comercial', columns: [{ id: 'col-vendido', name: 'Venda Concluída' }, { id: 'col-novo', name: 'Novo Lead' }, { id: 'col-atend', name: 'Em Atendimento' }] }], count: 1 });
       if (u.pathname === '/api/v1/deals') return send(200, { success: true, data: Object.values(deals), pagination: { has_more: false } });
       if ((m = u.pathname.match(/^\/api\/v1\/contacts\/([^/]+)$/))) return contacts[m[1]] ? send(200, { success: true, data: contacts[m[1]] }) : send(404, {});
       if (req.method === 'GET' && u.pathname.startsWith('/graph/')) {
@@ -373,6 +373,23 @@ test('leads de formulário: token sem permissão não quebra o app', async () =>
     const r = await app.leads.run();
     assert.ok(r.error);
     assert.equal(revvyWrites.length, 0);
+  } finally { await stopApp(); }
+});
+
+test('distribuição: card que foi para Em Atendimento sem dona também é distribuído', async () => {
+  await startApp({ DISTRIBUIR_ATENDENTES: 'Ana:u-ana,Eli:u-eli', DISTRIBUIR_A_CADA_SEGUNDOS: '0' });
+  try {
+    await app.distributor.run();
+    const at = (s) => new Date(Date.now() + 1000 + s * 1000).toISOString();
+    deals = {
+      pulou: { id: 'pulou', column: { id: 'col-atend' }, created_at: at(1), contact_id: 'ka', contact_phone: '5585990000001' },
+      comDona: { id: 'comDona', column: { id: 'col-atend' }, assigned_user: { id: 'u-eli' }, created_at: at(2), contact_id: 'kb', contact_phone: '5585990000002' },
+      normal: { id: 'normal', column_id: 'col-novo', created_at: at(3), contact_id: 'kc', contact_phone: '5585990000003' },
+    };
+    contacts.ka = { id: 'ka', conversations: [] }; contacts.kc = { id: 'kc', conversations: [] };
+    await app.distributor.run({ now: Date.now() + 60_000 });
+    const puts = revvyWrites.filter((w) => w.method === 'PUT');
+    assert.deepEqual(puts.map((w) => [w.path, w.body.assigned_user_id]), [['/api/v1/deals/pulou', 'u-ana'], ['/api/v1/deals/normal', 'u-eli']]);
   } finally { await stopApp(); }
 });
 
