@@ -69,6 +69,7 @@ export function loadConfig(env = process.env) {
       intervalSeconds: Number(env.DISTRIBUIR_A_CADA_SEGUNDOS ?? 20),
       column: env.DISTRIBUIR_COLUNA || 'Novo Lead',
       columnId: env.DISTRIBUIR_COLUNA_ID || '',
+      soWhatsapp: env.DISTRIBUIR_SO_WHATSAPP !== 'false',
       horario: parseHours(env.DISTRIBUIR_HORARIO),
       horarioTexto: env.DISTRIBUIR_HORARIO || '24 horas',
     },

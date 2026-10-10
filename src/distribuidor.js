@@ -125,6 +125,10 @@ export class Distributor {
     try {
       const columnId = await this.resolveColumn();
       for (const deal of await this.newDeals(columnId)) {
+        if (this.cfg.distribuir.soWhatsapp && !/^\d{10,15}$/.test(String(deal.contact_phone ?? deal.contact?.phone ?? ''))) {
+          st.feitos[deal.id] = nowS; // Instagram, Facebook etc.: fica como está, sem dona nem saudação
+          continue;
+        }
         const who = this.pick(deal.contact_id, nowS);
         try {
           await this.assign(deal, who);

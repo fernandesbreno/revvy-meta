@@ -388,12 +388,13 @@ test('distribuição: rodízio exato, só negócios novos, contato que volta fic
     assert.equal(revvyWrites.length, 0, 'o que já existia antes de ligar não é mexido');
 
     const novo = (id, contact, min = 0) => ({ id, column_id: 'col-novo', created_at: new Date(Date.now() + 1000 + min * 1000).toISOString(), contact_id: contact });
-    for (let i = 0; i < 9; i++) { const d = novo(`n${i}`, `k${i}`, i); deals[d.id] = d; contacts[`k${i}`] = { id: `k${i}`, conversations: [{ id: `conv${i}`, status: 'open' }, { id: `old${i}`, status: 'closed' }] }; }
+    deals.ig = { ...novo('ig', 'kig', 0.5), contact_phone: 'instagram:123' };
+    for (let i = 0; i < 9; i++) { const d = { ...novo(`n${i}`, `k${i}`, i), contact_phone: `55859900000${i}` }; deals[d.id] = d; contacts[`k${i}`] = { id: `k${i}`, conversations: [{ id: `conv${i}`, status: 'open' }, { id: `old${i}`, status: 'closed' }] }; }
     deals.outra = { id: 'outra', column_id: 'col-vendido', created_at: new Date(Date.now() + 5000).toISOString(), contact_id: 'k0' };
     await app.distributor.run({ now: Date.now() + 60_000 });
 
     const puts = revvyWrites.filter((w) => w.method === 'PUT');
-    assert.deepEqual(puts.map((w) => w.path), [0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => `/api/v1/deals/n${i}`), 'mais antigo primeiro, outra coluna fora');
+    assert.deepEqual(puts.map((w) => w.path), [0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => `/api/v1/deals/n${i}`), 'mais antigo primeiro, outra coluna e Instagram fora');
     assert.deepEqual(puts.map((w) => w.body.assigned_user_id), ['u-ana', 'u-eli', 'u-ruana', 'u-ana', 'u-eli', 'u-ruana', 'u-ana', 'u-eli', 'u-ruana']);
     const tr = revvyWrites.filter((w) => w.path === '/api/v1/conversations/transfer');
     assert.deepEqual(tr[0].body, { conversation_id: 'conv0', user_id: 'u-ana' });
@@ -402,8 +403,8 @@ test('distribuição: rodízio exato, só negócios novos, contato que volta fic
 
     // k1 (Eli) volta a falar: fica com a Eli e a vez continua na Ana
     revvyWrites = [];
-    const v = novo('volta', 'k1', 20); deals.volta = v;
-    const n = novo('n9', 'k9', 21); deals.n9 = n; contacts.k9 = { id: 'k9', conversations: [] };
+    const v = { ...novo('volta', 'k1', 20), contact_phone: '558599000001' }; deals.volta = v;
+    const n = { ...novo('n9', 'k9', 21), contact_phone: '558599000009' }; deals.n9 = n; contacts.k9 = { id: 'k9', conversations: [] };
     await app.distributor.run({ now: Date.now() + 120_000 });
     assert.deepEqual(revvyWrites.filter((w) => w.method === 'PUT').map((w) => w.body.assigned_user_id), ['u-eli', 'u-ana']);
 
