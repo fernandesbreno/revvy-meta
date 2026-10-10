@@ -139,7 +139,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     ? `[formulário] trazendo leads dos formulários da página ${cfg.leads.pageId} para "${cfg.leads.column}" a cada ${cfg.leads.intervalMinutes} min`
     : '[formulário] importação de leads de formulário desligada (preencha LEADS_PAGE_ID)');
   console.log(cfg.distribuir.atendentes.length
-    ? `[distribuição] rodízio entre ${cfg.distribuir.atendentes.map((a) => a.nome).join(', ')} para os negócios novos em "${cfg.distribuir.column}" (a cada ${cfg.distribuir.intervalSeconds} s)`
+    ? `[distribuição] rodízio entre ${cfg.distribuir.atendentes.map((a) => a.nome).join(', ')} para os negócios novos em "${cfg.distribuir.column}" (a cada ${cfg.distribuir.intervalSeconds} s, horário: ${cfg.distribuir.horarioTexto})`
     : '[distribuição] desligada (preencha DISTRIBUIR_ATENDENTES)');
   for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => app.stop().then(() => process.exit(0)));
 }

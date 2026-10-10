@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { parseAttendants } from './distribuidor.js';
+import { parseAttendants, parseHours } from './distribuidor.js';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
@@ -69,6 +69,8 @@ export function loadConfig(env = process.env) {
       intervalSeconds: Number(env.DISTRIBUIR_A_CADA_SEGUNDOS ?? 20),
       column: env.DISTRIBUIR_COLUNA || 'Novo Lead',
       columnId: env.DISTRIBUIR_COLUNA_ID || '',
+      horario: parseHours(env.DISTRIBUIR_HORARIO),
+      horarioTexto: env.DISTRIBUIR_HORARIO || '24 horas',
     },
     fillSkippedStages: env.PREENCHER_ETAPAS_PULADAS !== 'false',
     stages: loadStages(env),

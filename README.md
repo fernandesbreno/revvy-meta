@@ -87,6 +87,7 @@ A saudação com o nome de cada atendente sai do Revvy, de um workflow por atend
 | `DISTRIBUIR_ATENDENTES` | vazio (desligado) | `Nome:id` de cada atendente, separados por vírgula, na ordem do rodízio |
 | `DISTRIBUIR_A_CADA_SEGUNDOS` | `20` | Intervalo da verificação |
 | `DISTRIBUIR_COLUNA` | `Novo Lead` | Coluna de onde saem os negócios a distribuir |
+| `DISTRIBUIR_HORARIO` | vazio (24 horas) | Horário de atendimento, no fuso de Fortaleza. Ex.: `seg-sex 08:00-18:00; sab 08:00-12:00`. Fora dele os leads esperam e, na abertura, são distribuídos do mais antigo para o mais novo |
 
 O `/status` mostra quantos leads cada uma recebeu e quem é a próxima.
 

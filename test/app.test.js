@@ -10,7 +10,7 @@ import { createApp } from '../src/server.js';
 import { verifySignature, parseWebhook } from '../src/revvy.js';
 import { reconcile } from '../src/reconcile.js';
 import { leadContact } from '../src/leads.js';
-import { revvyTime, parseAttendants } from '../src/distribuidor.js';
+import { revvyTime, parseAttendants, parseHours, isOpen } from '../src/distribuidor.js';
 
 const SECRET = 'segredo-teste';
 const sha = (v) => crypto.createHash('sha256').update(v).digest('hex');
@@ -411,4 +411,17 @@ test('distribuição: rodízio exato, só negócios novos, contato que volta fic
     await app.distributor.run({ now: Date.now() + 180_000 });
     assert.equal(revvyWrites.length, 0, 'não distribui de novo');
   } finally { await stopApp(); }
+});
+
+test('horário da distribuição', () => {
+  const h = parseHours('seg-sex 08:00-18:00; sáb 08:00-12:00');
+  const at = (iso) => Date.parse(iso); // horários em UTC; Fortaleza = UTC-3
+  assert.equal(isOpen(h, at('2026-10-12T11:00:00Z')), true, 'segunda 8h');
+  assert.equal(isOpen(h, at('2026-10-12T10:59:00Z')), false, 'segunda 7h59');
+  assert.equal(isOpen(h, at('2026-10-12T21:00:00Z')), false, 'segunda 18h');
+  assert.equal(isOpen(h, at('2026-10-10T14:30:00Z')), true, 'sábado 11h30');
+  assert.equal(isOpen(h, at('2026-10-10T15:00:00Z')), false, 'sábado 12h');
+  assert.equal(isOpen(h, at('2026-10-11T14:00:00Z')), false, 'domingo');
+  assert.equal(isOpen([], at('2026-10-11T05:00:00Z')), true, 'sem horário = 24h');
+  assert.throws(() => parseHours('segunda 8-18'));
 });

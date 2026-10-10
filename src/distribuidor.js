@@ -26,6 +26,32 @@ export function parseAttendants(raw) {
   }).filter((a) => a.id);
 }
 
+const DIAS = { dom: 0, seg: 1, ter: 2, qua: 3, qui: 4, sex: 5, sab: 6 };
+
+/**
+ * "seg-sex 08:00-18:00; sab 08:00-12:00" -> [{ dias:Set, ini, fim }] em minutos do dia.
+ * Vazio = 24 horas.
+ */
+export function parseHours(raw) {
+  return String(raw || '').split(';').map((p) => p.trim()).filter(Boolean).map((p) => {
+    const m = p.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+      .match(/^([a-z]{3})(?:\s*-\s*([a-z]{3}))?\s+(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})$/);
+    if (!m || !(m[1] in DIAS) || (m[2] && !(m[2] in DIAS))) throw new Error(`DISTRIBUIR_HORARIO inválido: "${p}"`);
+    const dias = new Set();
+    for (let d = DIAS[m[1]]; ; d = (d + 1) % 7) { dias.add(d); if (d === DIAS[m[2] || m[1]]) break; }
+    return { dias, ini: +m[3] * 60 + +m[4], fim: +m[5] * 60 + +m[6] };
+  });
+}
+
+/** Está dentro do horário? Fuso fixo de Fortaleza/Brasília (UTC-3, sem horário de verão). */
+export function isOpen(hours, now = Date.now(), offsetMin = -180) {
+  if (!hours.length) return true;
+  const t = new Date(now + offsetMin * 60000);
+  const dia = t.getUTCDay();
+  const min = t.getUTCHours() * 60 + t.getUTCMinutes();
+  return hours.some((h) => h.dias.has(dia) && min >= h.ini && min < h.fim);
+}
+
 export class Distributor {
   constructor({ cfg, store, revvy, logger = console }) {
     Object.assign(this, { cfg, store, revvy, logger });
@@ -93,6 +119,8 @@ export class Distributor {
     const nowS = Math.floor(now / 1000);
     const st = this.st;
     if (!st.inicio) { st.inicio = nowS; this.store.save(); } // só distribui o que entrar daqui para frente
+    // fora do horário os leads esperam; na abertura saem todos, do mais antigo para o mais novo
+    if (!isOpen(this.cfg.distribuir.horario, now)) { this.running = false; return { fechado: true }; }
     let done = 0;
     try {
       const columnId = await this.resolveColumn();
