@@ -188,7 +188,7 @@ test('Instagram sem conta configurada é ignorado com motivo; "instagram:" nunca
     await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Lead Qualificado' } } });
     await settle();
     assert.equal(metaCalls.length, 0);
-    assert.match(JSON.stringify(app.store.state.log.at(-1)), /INSTAGRAM_BUSINESS_ACCOUNT_ID/);
+    assert.match(JSON.stringify(app.store.state.log.at(-1)), /Direct não está liberado/);
   } finally { await stopApp(); }
 });
 

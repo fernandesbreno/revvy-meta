@@ -97,7 +97,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       cfg.meta.igDatasetId = await new MetaClient(cfg.meta).instagramDataset();
       console.log(`[instagram] usando o conjunto de dados ${cfg.meta.igDatasetId}, ligado à conta do Instagram`);
     } catch (err) {
-      console.error(`[instagram] não consegui obter o conjunto de dados do Instagram (o token precisa da permissão instagram_manage_events): ${err.message}`);
+      cfg.meta.igAccountId = ''; // sem o conjunto do Instagram a Meta recusa todos os eventos do Direct: pula em vez de errar
+      console.error(`[instagram] envio do Direct desligado: não consegui obter o conjunto de dados do Instagram (o token precisa da permissão instagram_manage_events): ${err.message}`);
     }
   }
   const app = createApp({ cfg });

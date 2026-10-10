@@ -37,7 +37,7 @@ export function detectRoute(contact, cfg) {
   const [, channel, scopedId] = String(contact.phone || '').match(/^(instagram|messenger):\s*(\d+)$/i) || [];
   if (channel?.toLowerCase() === 'instagram') {
     if (cfg.meta.igAccountId) return { route: 'instagram', scopedId };
-    return { route: 'site', missing: 'contato do Instagram: preencha INSTAGRAM_BUSINESS_ACCOUNT_ID' };
+    return { route: 'site', missing: 'contato do Instagram: envio do Direct não está liberado (veja a linha [instagram] no log)' };
   }
   if (channel?.toLowerCase() === 'messenger') {
     if (cfg.meta.pageId) return { route: 'messenger', scopedId };
