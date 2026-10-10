@@ -62,15 +62,21 @@ export class LeadsImporter {
     }
   }
 
-  /** Os leads só saem com o token da página; se o token configurado for de usuário/sistema, pega o da página. */
+  /**
+   * Os leads só saem com o token da página; se o token configurado for de usuário/sistema, pega o da página.
+   * O token da página tirado de um token de usuário longo não expira, então fica guardado no volume:
+   * continua valendo depois que o token de usuário (60 dias) vencer.
+   */
   async token() {
     if (this.pageToken) return this.pageToken;
     const { pageId, token } = this.cfg.leads;
+    const st = (this.store.state.leads ||= { importados: {}, desde: 0 });
     try {
       const r = await this.graph(`${pageId}?fields=access_token`, token);
       this.pageToken = r.access_token || token;
+      if (r.access_token) { st.tokenPagina = r.access_token; this.store.save(); }
     } catch {
-      this.pageToken = token; // já é um token de página
+      this.pageToken = st.tokenPagina || token; // já é um token de página, ou o de usuário venceu
     }
     return this.pageToken;
   }
