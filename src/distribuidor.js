@@ -67,7 +67,8 @@ export class Distributor {
   async resolveColumn() {
     if (this.columnId) return this.columnId;
     const r = await this.revvy.request('/api/v1/columns');
-    const list = r.data || r.columns || [];
+    // a API devolve { pipelines: [{ columns: [...] }] }
+    const list = [...(r.data || r.columns || []), ...(r.pipelines || []).flatMap((p) => p.columns || [])];
     const want = this.cfg.distribuir.column.toLowerCase();
     const col = list.find((c) => String(c.name || '').toLowerCase() === want);
     if (!col) throw new Error(`coluna "${this.cfg.distribuir.column}" não encontrada no Revvy`);
