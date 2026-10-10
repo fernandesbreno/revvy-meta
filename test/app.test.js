@@ -76,7 +76,7 @@ const ago = (min) => new Date(Date.now() - min * 60000).toISOString();
 
 beforeEach(() => {
   metaCalls = []; metaFail = 0;
-  deals = { d1: { id: 'd1', value: 2500, created_at: ago(120), contact: { id: 'c1', name: 'João da Silva', phone: '5511999999999', email: 'Joao@Exemplo.com' }, column: { name: 'Ganho' } } };
+  deals = { d1: { id: 'd1', value: 2500, created_at: ago(120), contact: { id: 'c1', name: 'João da Silva', phone: '5511999999999', email: 'Joao@Exemplo.com' }, column: { name: 'Venda Concluída' } } };
   contacts = { c1: { id: 'c1', name: 'João da Silva', phone: '5511999999999', email: 'Joao@Exemplo.com', city: 'São Paulo', custom_fields: { meta_lead_id: '1234567890123456' } } };
   histories = {};
 });
@@ -91,7 +91,7 @@ test('assinatura: aceita a correta, recusa errada e antiga', () => {
 });
 
 test('parseWebhook encontra negócio e coluna em formatos diferentes', () => {
-  assert.equal(parseWebhook({ event: 'card_moved', data: { deal_id: 'x', to_column: { name: 'Ganho' } } }).columnName, 'Ganho');
+  assert.equal(parseWebhook({ event: 'card_moved', data: { deal_id: 'x', to_column: { name: 'Venda Concluída' } } }).columnName, 'Venda Concluída');
   assert.equal(parseWebhook({ deal: { id: 'y', column: { name: 'Perdido' } } }).dealId, 'y');
   assert.equal(parseWebhook({ event: 'deal.won', deal_id: 'z' }).forcedStage, 'ganho');
   assert.equal(parseWebhook({ event: 'call.ended', id: 'c' }), null);
@@ -100,12 +100,12 @@ test('parseWebhook encontra negócio e coluna em formatos diferentes', () => {
 test('lead de formulário: envia pela rota CRM, preenche etapas puladas e não duplica', async () => {
   await startApp();
   try {
-    const r = await signedPost({ event: 'card_moved', data: { deal_id: 'd1', to_column: { name: 'ganho' }, moved_at: ago(5) } });
+    const r = await signedPost({ event: 'card_moved', data: { deal_id: 'd1', to_column: { name: 'venda concluida' }, moved_at: ago(5) } });
     assert.equal(r.status, 200);
     await settle();
     assert.equal(metaCalls.length, 1);
     const evs = metaCalls[0].body.data;
-    assert.deepEqual(evs.map((e) => e.event_name), ['Lead', 'Lead Qualificado', 'Reuniao Agendada', 'Proposta Enviada', 'Venda']);
+    assert.deepEqual(evs.map((e) => e.event_name), ['Lead', 'Lead Qualificado', 'Orcamento Enviado', 'Avaliacao Marcada', 'Venda']);
     const venda = evs.at(-1);
     assert.equal(venda.action_source, 'system_generated');
     assert.equal(venda.user_data.lead_id, 1234567890123456);
@@ -114,7 +114,7 @@ test('lead de formulário: envia pela rota CRM, preenche etapas puladas e não d
     assert.deepEqual(venda.custom_data, { event_source: 'crm', lead_event_source: 'Revvy', currency: 'BRL', value: 2500 });
     assert.ok(evs.every((e, i) => i === 0 || e.event_time > evs[i - 1].event_time), 'etapas em ordem crescente de horário');
 
-    await signedPost({ event: 'card_moved', data: { deal_id: 'd1', to_column: { name: 'Ganho' } } });
+    await signedPost({ event: 'card_moved', data: { deal_id: 'd1', to_column: { name: 'Venda Concluída' } } });
     await settle();
     assert.equal(metaCalls.length, 1, 'não reenvia a mesma etapa');
   } finally { await stopApp(); }
@@ -123,7 +123,7 @@ test('lead de formulário: envia pela rota CRM, preenche etapas puladas e não d
 test('webhook com assinatura errada é recusado e nada é enviado', async () => {
   await startApp();
   try {
-    const r = await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Ganho' } } }, 'errado');
+    const r = await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Venda Concluída' } } }, 'errado');
     assert.equal(r.status, 401);
     await settle();
     assert.equal(metaCalls.length, 0);
@@ -142,9 +142,9 @@ test('anúncio de WhatsApp: rota Business Messaging, etapa sem equivalente é ig
     assert.equal(e.action_source, 'business_messaging');
     assert.deepEqual(e.user_data, { whatsapp_business_account_id: '999', ctwa_clid: 'ARAkLk' });
 
-    await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Perdido' } } });
+    await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Lead Frio' } } });
     await settle();
-    assert.equal(metaCalls.length, 1, 'perdido não existe na rota WhatsApp');
+    assert.equal(metaCalls.length, 1, 'lead frio não existe na rota de mensagens');
   } finally { await stopApp(); }
 });
 
@@ -164,11 +164,54 @@ test('outras origens: rota padrão com dados em hash e fbc; coluna desconhecida 
   } finally { await stopApp(); }
 });
 
+test('Direct do Instagram: rota Business Messaging com ig_sid e conjunto de dados próprio', async () => {
+  deals.d1.contact = { id: 'c2', name: 'maria.ig', phone: 'instagram:28745191678474277' };
+  contacts.c2 = { id: 'c2', name: 'maria.ig', phone: 'instagram:28745191678474277', email: null };
+  await startApp({ INSTAGRAM_BUSINESS_ACCOUNT_ID: '17841400000000000', META_DATASET_ID_INSTAGRAM: '222' });
+  try {
+    await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Orçamento Enviado' } } });
+    await settle();
+    assert.equal(metaCalls.length, 1);
+    assert.match(metaCalls[0].url, /\/222\/events/);
+    const evs = metaCalls[0].body.data;
+    assert.deepEqual(evs.map((e) => e.event_name), ['LeadSubmitted', 'QualifiedLead', 'InitiateCheckout']);
+    assert.equal(evs[0].messaging_channel, 'instagram');
+    assert.deepEqual(evs[0].user_data, { instagram_business_account_id: '17841400000000000', ig_sid: '28745191678474277' });
+  } finally { await stopApp(); }
+});
+
+test('Instagram sem conta configurada é ignorado com motivo; "instagram:" nunca vira telefone', async () => {
+  deals.d1.contact = { id: 'c2', name: 'maria.ig', phone: 'instagram:28745191678474277' };
+  contacts.c2 = { id: 'c2', name: 'maria.ig', phone: 'instagram:28745191678474277' };
+  await startApp({ PREENCHER_ETAPAS_PULADAS: 'false' });
+  try {
+    await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Lead Qualificado' } } });
+    await settle();
+    assert.equal(metaCalls.length, 0);
+    assert.match(JSON.stringify(app.store.state.log.at(-1)), /INSTAGRAM_BUSINESS_ACCOUNT_ID/);
+  } finally { await stopApp(); }
+});
+
+test('WhatsApp sem anúncio: rota padrão pelo telefone, nome que é só número não vira nome', async () => {
+  deals.d1.contact = { id: 'c3', name: '5585987106434', phone: '5585987106434' };
+  contacts.c3 = { id: 'c3', name: '5585987106434', phone: '5585987106434' };
+  await startApp({ PREENCHER_ETAPAS_PULADAS: 'false' });
+  try {
+    await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Link/Avaliação Marcada' } } });
+    await settle();
+    const e = metaCalls[0].body.data[0];
+    assert.equal(e.event_name, 'Schedule');
+    assert.deepEqual(e.user_data.ph, [sha('5585987106434')]);
+    assert.equal(e.user_data.fn, undefined);
+    assert.match(metaCalls[0].url, /\/111\/events/);
+  } finally { await stopApp(); }
+});
+
 test('falha temporária da Meta: tenta de novo e o trabalho sobrevive', async () => {
   metaFail = 10; // falha mais vezes que as tentativas imediatas
   await startApp({ PREENCHER_ETAPAS_PULADAS: 'false' });
   try {
-    await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Ganho' } } });
+    await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Venda Concluída' } } });
     for (let i = 0; i < 200 && !app.store.state.pending[0]?.attempts; i++) await new Promise((r) => setTimeout(r, 50));
     assert.equal(app.store.state.pending.length, 1, 'continua na fila');
     assert.equal(metaCalls.length, 0);
@@ -183,9 +226,9 @@ test('falha temporária da Meta: tenta de novo e o trabalho sobrevive', async ()
 test('modo teste envia test_event_code e não marca como enviado', async () => {
   await startApp({ META_TEST_EVENT_CODE: 'TEST123', PREENCHER_ETAPAS_PULADAS: 'false' });
   try {
-    await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Ganho' } } });
+    await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Venda Concluída' } } });
     await settle();
-    await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Ganho' } } });
+    await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Venda Concluída' } } });
     await settle();
     assert.equal(metaCalls.length, 2);
     assert.equal(metaCalls[0].body.test_event_code, 'TEST123');
@@ -196,7 +239,7 @@ test('reconciliação envia movimentações que o webhook perdeu', async () => {
   histories.d1 = [
     { moved_at: ago(100), from_column: null, to_column: { name: 'Novo Lead' } },
     { moved_at: ago(30), from_column: { name: 'Novo Lead' }, to_column: { name: 'Lead Qualificado' } },
-    { moved_at: new Date(Date.now() - 10 * 86400000).toISOString(), from_column: null, to_column: { name: 'Ganho' } },
+    { moved_at: new Date(Date.now() - 10 * 86400000).toISOString(), from_column: null, to_column: { name: 'Venda Concluída' } },
   ];
   const cfg = await startApp({ PREENCHER_ETAPAS_PULADAS: 'false' });
   try {
@@ -213,7 +256,7 @@ test('reconciliação envia movimentações que o webhook perdeu', async () => {
 test('/status exige token e não expõe dados pessoais', async () => {
   await startApp({ PREENCHER_ETAPAS_PULADAS: 'false' });
   try {
-    await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Ganho' } } });
+    await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Venda Concluída' } } });
     await settle();
     assert.equal((await fetch(appUrl + '/status')).status, 401);
     const s = await (await fetch(appUrl + '/status?token=adm')).text();

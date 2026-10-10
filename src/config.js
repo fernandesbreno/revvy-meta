@@ -12,7 +12,7 @@ function loadStages(env) {
   const raw = env.ETAPAS_JSON || readFileSync(env.ETAPAS_FILE || path.join(root, 'etapas.json'), 'utf8');
   const list = JSON.parse(raw).etapas;
   if (!Array.isArray(list) || !list.length) throw new Error('etapas.json sem a lista "etapas"');
-  return list.map((e, i) => ({ ...e, key: normalize(e.coluna), ordem: i }));
+  return list.map((e, i) => ({ ...e, key: normalize(e.coluna), aliases: (e.apelidos || []).map(normalize), ordem: i }));
 }
 
 export function loadConfig(env = process.env) {
@@ -36,6 +36,10 @@ export function loadConfig(env = process.env) {
       datasetId: env.META_DATASET_ID,
       accessToken: env.META_ACCESS_TOKEN,
       wabaId: env.WHATSAPP_BUSINESS_ACCOUNT_ID || '',
+      igAccountId: env.INSTAGRAM_BUSINESS_ACCOUNT_ID || '',
+      igDatasetId: env.META_DATASET_ID_INSTAGRAM || '',
+      pageId: env.FACEBOOK_PAGE_ID || '',
+      pageDatasetId: env.META_DATASET_ID_MESSENGER || '',
       testEventCode: env.META_TEST_EVENT_CODE || '',
       leadEventSource: env.LEAD_EVENT_SOURCE || 'Revvy',
       currency: env.MOEDA || 'BRL',

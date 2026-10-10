@@ -101,7 +101,7 @@ export class Processor {
 
     if (!events.length) return { resultado: 'ignorado', rota: routeInfo.route, etapa: stage.coluna, detalhe: skipped.join('; ') || 'nada a enviar' };
 
-    const resp = await this.meta.send(events);
+    const resp = await this.meta.send(events, { route: routeInfo.route });
     if (!this.cfg.meta.testEventCode) for (const e of events) this.store.markSent(e.event_id);
     this.store.save();
     return {
