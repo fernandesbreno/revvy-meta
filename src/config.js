@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { parseAttendants } from './distribuidor.js';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
@@ -62,6 +63,12 @@ export function loadConfig(env = process.env) {
       daysBack: Number(env.LEADS_DIAS_ATRAS || 0),
       sector: env.LEADS_SETOR || 'Comercial',
       column: env.LEADS_COLUNA || 'Novo Lead',
+    },
+    distribuir: {
+      atendentes: parseAttendants(env.DISTRIBUIR_ATENDENTES),
+      intervalSeconds: Number(env.DISTRIBUIR_A_CADA_SEGUNDOS ?? 20),
+      column: env.DISTRIBUIR_COLUNA || 'Novo Lead',
+      columnId: env.DISTRIBUIR_COLUNA_ID || '',
     },
     fillSkippedStages: env.PREENCHER_ETAPAS_PULADAS !== 'false',
     stages: loadStages(env),

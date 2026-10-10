@@ -6,6 +6,7 @@ import { MetaClient } from './meta.js';
 import { Processor } from './processor.js';
 import { reconcile } from './reconcile.js';
 import { LeadsImporter } from './leads.js';
+import { Distributor } from './distribuidor.js';
 
 export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
   const store = new Store(cfg.dataDir);
@@ -13,6 +14,7 @@ export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
   const meta = new MetaClient(cfg.meta, { fetchImpl });
   const processor = new Processor({ cfg, store, revvy, meta, logger });
   const leads = cfg.leads.pageId ? new LeadsImporter({ cfg, store, revvy, fetchImpl, logger }) : null;
+  const distributor = cfg.distribuir.atendentes.length ? new Distributor({ cfg, store, revvy, logger }) : null;
 
   const json = (res, status, obj) => {
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -32,6 +34,7 @@ export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
         pendentes: store.state.pending.map(({ dealId, columnName, attempts, lastError }) => ({ dealId, columnName, attempts, lastError })),
         enviados_total: Object.keys(store.state.sent).length,
         leads_formulario_importados: Object.keys(store.state.leads.importados).length,
+        distribuicao: store.state.distribuicao ? { contagem: store.state.distribuicao.contagem, proxima: cfg.distribuir.atendentes[store.state.distribuicao.vez]?.nome } : null,
         ultimos: store.state.log.slice(0, 50),
       });
     }
@@ -71,6 +74,7 @@ export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
 
   let reconcileTimer = null;
   let leadsTimer = null;
+  let distTimer = null;
   let reconciling = false;
   const runReconcile = async () => {
     if (reconciling) return; // a rodada anterior ainda não terminou
@@ -90,7 +94,12 @@ export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
     processor,
     runReconcile,
     leads,
+    distributor,
     start() {
+      if (distributor && cfg.distribuir.intervalSeconds > 0) {
+        setTimeout(() => distributor.run(), 3_000);
+        distTimer = setInterval(() => distributor.run(), cfg.distribuir.intervalSeconds * 1000);
+      }
       processor.start();
       if (leads && cfg.leads.intervalMinutes > 0) {
         setTimeout(() => leads.run(), 5_000);
@@ -106,6 +115,7 @@ export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
       processor.stop();
       clearInterval(reconcileTimer);
       clearInterval(leadsTimer);
+      clearInterval(distTimer);
       return new Promise((r) => server.close(r));
     },
   };
@@ -128,5 +138,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   console.log(cfg.leads.pageId
     ? `[formulário] trazendo leads dos formulários da página ${cfg.leads.pageId} para "${cfg.leads.column}" a cada ${cfg.leads.intervalMinutes} min`
     : '[formulário] importação de leads de formulário desligada (preencha LEADS_PAGE_ID)');
+  console.log(cfg.distribuir.atendentes.length
+    ? `[distribuição] rodízio entre ${cfg.distribuir.atendentes.map((a) => a.nome).join(', ')} para os negócios novos em "${cfg.distribuir.column}" (a cada ${cfg.distribuir.intervalSeconds} s)`
+    : '[distribuição] desligada (preencha DISTRIBUIR_ATENDENTES)');
   for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => app.stop().then(() => process.exit(0)));
 }

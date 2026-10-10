@@ -10,6 +10,7 @@ import { createApp } from '../src/server.js';
 import { verifySignature, parseWebhook } from '../src/revvy.js';
 import { reconcile } from '../src/reconcile.js';
 import { leadContact } from '../src/leads.js';
+import { revvyTime, parseAttendants } from '../src/distribuidor.js';
 
 const SECRET = 'segredo-teste';
 const sha = (v) => crypto.createHash('sha256').update(v).digest('hex');
@@ -45,10 +46,13 @@ before(async () => {
         }
         if (u.pathname.startsWith('/api/v1/contacts/')) return send(200, { success: true });
         if (u.pathname === '/api/v1/deals/create') return send(200, { success: true, deal: { id: 'deal-novo' } });
+        if (u.pathname === '/api/v1/conversations/transfer') return send(200, { success: true });
+        if (u.pathname.startsWith('/api/v1/deals/')) return send(200, { success: true });
       }
       let m;
       if ((m = u.pathname.match(/^\/api\/v1\/deals\/([^/]+)\/stage-history$/))) return send(200, { success: true, data: { history: histories[m[1]] || [] } });
       if ((m = u.pathname.match(/^\/api\/v1\/deals\/([^/]+)$/))) return deals[m[1]] ? send(200, { success: true, data: deals[m[1]] }) : send(404, {});
+      if (u.pathname === '/api/v1/columns') return send(200, { success: true, data: [{ id: 'col-vendido', name: 'Venda Concluída' }, { id: 'col-novo', name: 'Novo Lead' }] });
       if (u.pathname === '/api/v1/deals') return send(200, { success: true, data: Object.values(deals), pagination: { has_more: false } });
       if ((m = u.pathname.match(/^\/api\/v1\/contacts\/([^/]+)$/))) return contacts[m[1]] ? send(200, { success: true, data: contacts[m[1]] }) : send(404, {});
       if (req.method === 'GET' && u.pathname.startsWith('/graph/')) {
@@ -368,5 +372,43 @@ test('leads de formulário: token sem permissão não quebra o app', async () =>
     const r = await app.leads.run();
     assert.ok(r.error);
     assert.equal(revvyWrites.length, 0);
+  } finally { await stopApp(); }
+});
+
+test('revvyTime e parseAttendants', () => {
+  assert.equal(revvyTime('2026-10-10 00:38:18.989193-03'), Math.floor(Date.parse('2026-10-10T03:38:18.989Z') / 1000));
+  assert.deepEqual(parseAttendants('Ana:u1, Eli:u2,Ruana:u3'), [{ nome: 'Ana', id: 'u1' }, { nome: 'Eli', id: 'u2' }, { nome: 'Ruana', id: 'u3' }]);
+});
+
+test('distribuição: rodízio exato, só negócios novos, contato que volta fica com a mesma atendente', async () => {
+  await startApp({ DISTRIBUIR_ATENDENTES: 'Ana:u-ana,Eli:u-eli,Ruana:u-ruana', DISTRIBUIR_A_CADA_SEGUNDOS: '0' });
+  try {
+    deals = { velho: { id: 'velho', column_id: 'col-novo', created_at: ago(60), contact_id: 'cx' } };
+    await app.distributor.run();
+    assert.equal(revvyWrites.length, 0, 'o que já existia antes de ligar não é mexido');
+
+    const novo = (id, contact, min = 0) => ({ id, column_id: 'col-novo', created_at: new Date(Date.now() + 1000 + min * 1000).toISOString(), contact_id: contact });
+    for (let i = 0; i < 9; i++) { const d = novo(`n${i}`, `k${i}`, i); deals[d.id] = d; contacts[`k${i}`] = { id: `k${i}`, conversations: [{ id: `conv${i}`, status: 'open' }, { id: `old${i}`, status: 'closed' }] }; }
+    deals.outra = { id: 'outra', column_id: 'col-vendido', created_at: new Date(Date.now() + 5000).toISOString(), contact_id: 'k0' };
+    await app.distributor.run({ now: Date.now() + 60_000 });
+
+    const puts = revvyWrites.filter((w) => w.method === 'PUT');
+    assert.deepEqual(puts.map((w) => w.path), [0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => `/api/v1/deals/n${i}`), 'mais antigo primeiro, outra coluna fora');
+    assert.deepEqual(puts.map((w) => w.body.assigned_user_id), ['u-ana', 'u-eli', 'u-ruana', 'u-ana', 'u-eli', 'u-ruana', 'u-ana', 'u-eli', 'u-ruana']);
+    const tr = revvyWrites.filter((w) => w.path === '/api/v1/conversations/transfer');
+    assert.deepEqual(tr[0].body, { conversation_id: 'conv0', user_id: 'u-ana' });
+    assert.equal(tr.length, 9, 'conversa encerrada não é transferida');
+    assert.deepEqual(app.store.state.distribuicao.contagem, { Ana: 3, Eli: 3, Ruana: 3 });
+
+    // k1 (Eli) volta a falar: fica com a Eli e a vez continua na Ana
+    revvyWrites = [];
+    const v = novo('volta', 'k1', 20); deals.volta = v;
+    const n = novo('n9', 'k9', 21); deals.n9 = n; contacts.k9 = { id: 'k9', conversations: [] };
+    await app.distributor.run({ now: Date.now() + 120_000 });
+    assert.deepEqual(revvyWrites.filter((w) => w.method === 'PUT').map((w) => w.body.assigned_user_id), ['u-eli', 'u-ana']);
+
+    revvyWrites = [];
+    await app.distributor.run({ now: Date.now() + 180_000 });
+    assert.equal(revvyWrites.length, 0, 'não distribui de novo');
   } finally { await stopApp(); }
 });

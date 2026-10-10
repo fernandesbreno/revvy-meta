@@ -75,6 +75,21 @@ A partir daí, cada etapa desse card vai para a Meta pela rota CRM. É essa rota
 
 Leads sem telefone são ignorados, porque o Revvy exige telefone para criar o card. Se o token não tiver permissão, o log mostra uma linha `[formulário]` com o motivo e o resto do programa continua funcionando.
 
+## Distribuição dos leads entre as atendentes
+Com `DISTRIBUIR_ATENDENTES` preenchido, o programa olha a coluna **Novo Lead** a cada 20 segundos. Cada negócio que entrar ali depois de ligar a distribuição vai para a próxima atendente da lista, em rodízio exato (Ana, Eli, Ruana, Ana...). O programa define a responsável do card e transfere a conversa aberta do contato para ela. A vez fica guardada no volume `/data`, então a divisão continua igual depois de reiniciar.
+
+Se o contato já foi distribuído nos últimos 30 dias, ele volta para a mesma atendente e não gasta a vez de ninguém. Por isso, testes com o mesmo número sempre caem na mesma pessoa.
+
+A saudação com o nome de cada atendente sai do Revvy, de um workflow por atendente com o gatilho **Negócio atribuído a um vendedor**. Desligue a distribuição automática do próprio Revvy para as duas não brigarem.
+
+| Variável | Padrão | Para que serve |
+|---|---|---|
+| `DISTRIBUIR_ATENDENTES` | vazio (desligado) | `Nome:id` de cada atendente, separados por vírgula, na ordem do rodízio |
+| `DISTRIBUIR_A_CADA_SEGUNDOS` | `20` | Intervalo da verificação |
+| `DISTRIBUIR_COLUNA` | `Novo Lead` | Coluna de onde saem os negócios a distribuir |
+
+O `/status` mostra quantos leads cada uma recebeu e quem é a próxima.
+
 ## Etapas do funil
 O arquivo [`etapas.json`](etapas.json) liga o nome de cada coluna do kanban ao evento da Meta. Para mudar, edite o arquivo aqui no GitHub e clique em **Deploy** no Easypanel. Maiúsculas e acentos não importam.
 
