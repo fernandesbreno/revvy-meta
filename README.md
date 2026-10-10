@@ -44,7 +44,7 @@ Proteções:
    | `ADMIN_TOKEN` | Invente uma senha longa; serve para abrir a página `/status` |
    | `INSTAGRAM_BUSINESS_ACCOUNT_ID` | ID da conta profissional do Instagram (Configurações do negócio → Contas → Contas do Instagram). Sem ele, leads do Direct não são enviados |
    | `META_DATASET_ID_INSTAGRAM` | Opcional. Só se a Meta criar um conjunto de dados separado para o Instagram; se vazio, usa `META_DATASET_ID` |
-   | `WHATSAPP_BUSINESS_ACCOUNT_ID` | Opcional, só para anúncios de clique para WhatsApp com `ctwa_clid` |
+   | `WHATSAPP_BUSINESS_ACCOUNT_ID` | ID da conta do WhatsApp Business (Gerenciador do WhatsApp). Com ele, leads de anúncio de clique para WhatsApp vão pelo `ctwa_clid` que o Revvy guarda na origem da conversa; se a Meta recusar, o programa envia pelo telefone |
    | `FACEBOOK_PAGE_ID` / `META_DATASET_ID_MESSENGER` | Opcional, só se usar o Messenger |
 4. **Guardar o histórico:** na aba **Mounts**, adicione um **Volume** com *Mount Path* `/data`. É onde fica o registro do que já foi enviado.
 5. **Endereço:** na aba **Domains**, confira se existe um domínio (o Easypanel cria um automaticamente) com a mesma porta que aparece no log "ouvindo na porta" (o Easypanel costuma usar **80**). Clique em **Deploy**.

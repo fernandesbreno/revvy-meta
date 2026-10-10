@@ -77,7 +77,18 @@ export class Processor {
       }
     }
     const routeInfo = detectRoute(contact, this.cfg);
+    try {
+      return await this.sendFor(job, deal, contact, stage, routeInfo);
+    } catch (err) {
+      // Se a Meta recusar o formato de mensagens do WhatsApp (permissão, conta), manda pelo telefone
+      if (!(err.permanent && routeInfo.route === 'whatsapp')) throw err;
+      this.logger.warn(`[whatsapp] Meta recusou pelo ctwa_clid, enviando pelo telefone: ${err.message}`);
+      const r = await this.sendFor(job, deal, contact, stage, { route: 'site' });
+      return { ...r, detalhe: `ctwa_clid recusado: ${err.message.slice(0, 200)}` };
+    }
+  }
 
+  async sendFor(job, deal, contact, stage, routeInfo) {
     // Etapas a enviar: as do funil que ficaram para trás (se o card pulou) + a atual
     const stages = [];
     if (stage.funil && this.cfg.fillSkippedStages) {

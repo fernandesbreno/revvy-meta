@@ -32,7 +32,11 @@ export function detectRoute(contact, cfg) {
   const cf = contact.custom_fields || {};
   const leadId = String(cf[cfg.fields.metaLeadId] || '').replace(/\D/g, '');
   if (leadId.length >= 15 && leadId.length <= 17) return { route: 'crm', leadId };
-  const ctwa = String(cf[cfg.fields.ctwaClid] || '').trim();
+  // O Revvy guarda o ctwa_clid na origem da conversa (anúncio de clique para WhatsApp)
+  const fromSource = [contact.source, ...(contact.conversations || [])]
+    .map((x) => x?.source_metadata?.ctwa_clid)
+    .find(Boolean);
+  const ctwa = String(cf[cfg.fields.ctwaClid] || fromSource || '').trim();
   if (ctwa && cfg.meta.wabaId) return { route: 'whatsapp', ctwaClid: ctwa };
   const [, channel, scopedId] = String(contact.phone || '').match(/^(instagram|messenger):\s*(\d+)$/i) || [];
   if (channel?.toLowerCase() === 'instagram') {

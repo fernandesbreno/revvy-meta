@@ -17,6 +17,7 @@ const quiet = { log() {}, warn() {}, error() {} };
 // ---- Revvy + Meta simulados ----
 let metaCalls = [];
 let metaFail = 0;
+let rejectWhatsapp = false;
 let deals = {};
 let contacts = {};
 let histories = {};
@@ -38,6 +39,7 @@ before(async () => {
       if ((m = u.pathname.match(/^\/api\/v1\/contacts\/([^/]+)$/))) return contacts[m[1]] ? send(200, { success: true, data: contacts[m[1]] }) : send(404, {});
       if (u.pathname.startsWith('/graph/')) {
         if (metaFail > 0) { metaFail--; return send(500, { error: 'temporário' }); }
+        if (rejectWhatsapp && body.includes('"messaging_channel":"whatsapp"')) return send(400, { error: { message: 'sem permissão' } });
         metaCalls.push({ url: req.url, body: JSON.parse(body) });
         return send(200, { events_received: 1, fbtrace_id: 'trace' });
       }
@@ -75,7 +77,7 @@ const settle = async () => { for (let i = 0; i < 50 && app.store.state.pending.l
 const ago = (min) => new Date(Date.now() - min * 60000).toISOString();
 
 beforeEach(() => {
-  metaCalls = []; metaFail = 0;
+  metaCalls = []; metaFail = 0; rejectWhatsapp = false;
   deals = { d1: { id: 'd1', value: 2500, created_at: ago(120), contact: { id: 'c1', name: 'João da Silva', phone: '5511999999999', email: 'Joao@Exemplo.com' }, column: { name: 'Venda Concluída' } } };
   contacts = { c1: { id: 'c1', name: 'João da Silva', phone: '5511999999999', email: 'Joao@Exemplo.com', city: 'São Paulo', custom_fields: { meta_lead_id: '1234567890123456' } } };
   histories = {};
@@ -204,6 +206,28 @@ test('WhatsApp sem anúncio: rota padrão pelo telefone, nome que é só número
     assert.deepEqual(e.user_data.ph, [sha('5585987106434')]);
     assert.equal(e.user_data.fn, undefined);
     assert.match(metaCalls[0].url, /\/111\/events/);
+  } finally { await stopApp(); }
+});
+
+test('WhatsApp de anúncio: lê o ctwa_clid da origem da conversa no Revvy; se a Meta recusar, envia pelo telefone', async () => {
+  deals.d1.contact = { id: 'c3', name: '5585987106434', phone: '5585987106434' };
+  contacts.c3 = { id: 'c3', name: '5585987106434', phone: '5585987106434', custom_fields: [],
+    source: { source_type: 'ads', source_metadata: { ctwa_clid: 'AfiFMp123' } } };
+  await startApp({ PREENCHER_ETAPAS_PULADAS: 'false' });
+  try {
+    await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Lead Qualificado' } } });
+    await settle();
+    assert.deepEqual(metaCalls[0].body.data[0].user_data, { whatsapp_business_account_id: '999', ctwa_clid: 'AfiFMp123' });
+    assert.equal(metaCalls[0].body.data[0].event_name, 'LeadSubmitted');
+
+    rejectWhatsapp = true;
+    await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Orçamento Enviado' } } });
+    await settle();
+    assert.equal(metaCalls.length, 2);
+    const e = metaCalls[1].body.data[0];
+    assert.equal(e.event_name, 'InitiateCheckout');
+    assert.equal(e.messaging_channel, undefined);
+    assert.deepEqual(e.user_data.ph, [sha('5585987106434')]);
   } finally { await stopApp(); }
 });
 
