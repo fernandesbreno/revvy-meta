@@ -67,7 +67,18 @@ export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
   });
 
   let reconcileTimer = null;
-  const runReconcile = () => reconcile({ cfg, store, revvy, processor, logger }).catch((e) => logger.error(`[reconciliação] ${e.message}`));
+  let reconciling = false;
+  const runReconcile = async () => {
+    if (reconciling) return; // a rodada anterior ainda não terminou
+    reconciling = true;
+    try {
+      await reconcile({ cfg, store, revvy, processor, logger });
+    } catch (e) {
+      logger.error(`[reconciliação] ${e.message}`);
+    } finally {
+      reconciling = false;
+    }
+  };
 
   return {
     server,

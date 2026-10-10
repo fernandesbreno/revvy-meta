@@ -26,7 +26,7 @@ export function loadConfig(env = process.env) {
     adminToken: env.ADMIN_TOKEN || '',
     revvy: {
       baseUrl: (env.REVVY_BASE_URL || 'https://revvy.uni6.net').replace(/\/$/, ''),
-      apiKey: env.REVVY_API_KEY,
+      apiKey: String(env.REVVY_API_KEY).trim(),
       webhookSecret: env.REVVY_WEBHOOK_SECRET,
       validateSignature: env.VALIDAR_ASSINATURA !== 'false',
     },
@@ -34,7 +34,7 @@ export function loadConfig(env = process.env) {
       graphUrl: (env.META_GRAPH_URL || 'https://graph.facebook.com').replace(/\/$/, ''),
       graphVersion: env.META_GRAPH_VERSION || 'v24.0',
       datasetId: env.META_DATASET_ID,
-      accessToken: env.META_ACCESS_TOKEN,
+      accessToken: String(env.META_ACCESS_TOKEN).trim(),
       wabaId: env.WHATSAPP_BUSINESS_ACCOUNT_ID || '',
       igAccountId: env.INSTAGRAM_BUSINESS_ACCOUNT_ID || '',
       igDatasetId: env.META_DATASET_ID_INSTAGRAM || '',

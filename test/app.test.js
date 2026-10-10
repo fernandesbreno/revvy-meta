@@ -247,15 +247,16 @@ test('falha temporária da Meta: tenta de novo e o trabalho sobrevive', async ()
   } finally { await stopApp(); }
 }, { timeout: 30000 });
 
-test('modo teste envia test_event_code e não marca como enviado', async () => {
+test('modo teste envia test_event_code, não repete na mesma execução e não grava como enviado', async () => {
   await startApp({ META_TEST_EVENT_CODE: 'TEST123', PREENCHER_ETAPAS_PULADAS: 'false' });
   try {
     await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Venda Concluída' } } });
     await settle();
     await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Venda Concluída' } } });
     await settle();
-    assert.equal(metaCalls.length, 2);
+    assert.equal(metaCalls.length, 1);
     assert.equal(metaCalls[0].body.test_event_code, 'TEST123');
+    assert.deepEqual(app.store.state.sent, {}, 'nada gravado no disco em modo teste');
   } finally { await stopApp(); }
 });
 

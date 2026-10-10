@@ -19,6 +19,7 @@ export class Store {
     this.state.sent ||= {};
     this.state.pending ||= [];
     this.state.log ||= [];
+    this.testSent = new Set(); // envios em modo teste: só na memória, para não repetir a cada reconciliação
     this.prune();
   }
 
@@ -33,9 +34,12 @@ export class Store {
     for (const [k, t] of Object.entries(this.state.sent)) if (t < limit) delete this.state.sent[k];
   }
 
-  wasSent(id) { return Boolean(this.state.sent[id]); }
+  wasSent(id) { return Boolean(this.state.sent[id]) || this.testSent.has(id); }
 
-  markSent(id) { this.state.sent[id] = Math.floor(Date.now() / 1000); }
+  markSent(id, { test = false } = {}) {
+    if (test) this.testSent.add(id);
+    else this.state.sent[id] = Math.floor(Date.now() / 1000);
+  }
 
   addPending(job) { this.state.pending.push(job); this.save(); }
 

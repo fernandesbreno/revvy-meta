@@ -110,10 +110,16 @@ export class Processor {
       events.push(r.event);
     });
 
-    if (!events.length) return { resultado: 'ignorado', rota: routeInfo.route, etapa: stage.coluna, detalhe: skipped.join('; ') || 'nada a enviar' };
+    const test = Boolean(this.cfg.meta.testEventCode);
+    if (!events.length) {
+      // Marca a etapa como tratada para a reconciliação não reprocessar o mesmo card a cada rodada
+      this.store.markSent(`${deal.id}:${stage.key.replace(/\s+/g, '_')}`, { test });
+      this.store.save();
+      return { resultado: 'ignorado', rota: routeInfo.route, etapa: stage.coluna, detalhe: skipped.join('; ') || 'nada a enviar' };
+    }
 
     const resp = await this.meta.send(events, { route: routeInfo.route });
-    if (!this.cfg.meta.testEventCode) for (const e of events) this.store.markSent(e.event_id);
+    for (const e of events) this.store.markSent(e.event_id, { test });
     this.store.save();
     return {
       resultado: 'enviado',
