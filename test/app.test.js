@@ -138,7 +138,7 @@ test('anúncio de WhatsApp: rota Business Messaging, etapa sem equivalente é ig
     await settle();
     assert.equal(metaCalls.length, 1);
     const e = metaCalls[0].body.data[0];
-    assert.equal(e.event_name, 'QualifiedLead');
+    assert.equal(e.event_name, 'LeadSubmitted');
     assert.equal(e.action_source, 'business_messaging');
     assert.deepEqual(e.user_data, { whatsapp_business_account_id: '999', ctwa_clid: 'ARAkLk' });
 
@@ -174,7 +174,7 @@ test('Direct do Instagram: rota Business Messaging com ig_sid e conjunto de dado
     assert.equal(metaCalls.length, 1);
     assert.match(metaCalls[0].url, /\/222\/events/);
     const evs = metaCalls[0].body.data;
-    assert.deepEqual(evs.map((e) => e.event_name), ['LeadSubmitted', 'QualifiedLead', 'InitiateCheckout']);
+    assert.deepEqual(evs.map((e) => e.event_name), ['LeadSubmitted', 'InitiateCheckout']);
     assert.equal(evs[0].messaging_channel, 'instagram');
     assert.deepEqual(evs[0].user_data, { instagram_business_account_id: '17841400000000000', ig_sid: '28745191678474277' });
   } finally { await stopApp(); }
