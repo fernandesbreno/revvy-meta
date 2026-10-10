@@ -28,8 +28,20 @@ export function hashedUserData(contact) {
 const MESSAGING_ROUTES = ['whatsapp', 'instagram', 'messenger'];
 
 /** Decide a rota (crm / whatsapp / instagram / messenger / site) a partir do contato. */
+/** O Revvy pode devolver os campos personalizados como objeto { chave: valor } ou como lista. */
+function customFields(contact) {
+  const raw = contact.custom_fields;
+  if (!Array.isArray(raw)) return raw || {};
+  const out = {};
+  for (const f of raw) {
+    const k = f?.key ?? f?.field_key ?? f?.name ?? f?.slug;
+    if (k) out[k] = f.value ?? f.field_value ?? '';
+  }
+  return out;
+}
+
 export function detectRoute(contact, cfg) {
-  const cf = contact.custom_fields || {};
+  const cf = customFields(contact);
   const leadId = String(cf[cfg.fields.metaLeadId] || '').replace(/\D/g, '');
   if (leadId.length >= 15 && leadId.length <= 17) return { route: 'crm', leadId };
   // O Revvy guarda o ctwa_clid na origem da conversa (anúncio de clique para WhatsApp)

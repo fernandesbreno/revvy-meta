@@ -122,6 +122,16 @@ test('lead de formulário: envia pela rota CRM, preenche etapas puladas e não d
   } finally { await stopApp(); }
 });
 
+test('campos personalizados em forma de lista: lê o meta_lead_id', async () => {
+  contacts.c1.custom_fields = [{ key: 'meta_lead_id', label: 'ID do lead Meta', value: '1234567890123456' }];
+  await startApp({ PREENCHER_ETAPAS_PULADAS: 'false' });
+  try {
+    await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Lead Qualificado' } } });
+    await settle();
+    assert.equal(metaCalls[0].body.data[0].user_data.lead_id, 1234567890123456);
+  } finally { await stopApp(); }
+});
+
 test('webhook com assinatura errada é recusado e nada é enviado', async () => {
   await startApp();
   try {
@@ -211,7 +221,7 @@ test('WhatsApp sem anúncio: rota padrão pelo telefone, nome que é só número
 
 test('WhatsApp de anúncio: lê o ctwa_clid da origem da conversa no Revvy; se a Meta recusar, envia pelo telefone', async () => {
   deals.d1.contact = { id: 'c3', name: '5585987106434', phone: '5585987106434' };
-  contacts.c3 = { id: 'c3', name: '5585987106434', phone: '5585987106434', custom_fields: [],
+  contacts.c3 = { id: 'c3', name: '5585987106434', phone: '5585987106434', custom_fields: [{ key: 'fbc', value: '' }],
     source: { source_type: 'ads', source_metadata: { ctwa_clid: 'AfiFMp123' } } };
   await startApp({ PREENCHER_ETAPAS_PULADAS: 'false' });
   try {
