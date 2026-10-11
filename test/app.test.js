@@ -386,10 +386,42 @@ test('distribuição: card que foi para Em Atendimento sem dona também é distr
       comDona: { id: 'comDona', column: { id: 'col-atend' }, assigned_user: { id: 'u-eli' }, created_at: at(2), contact_id: 'kb', contact_phone: '5585990000002' },
       normal: { id: 'normal', column_id: 'col-novo', created_at: at(3), contact_id: 'kc', contact_phone: '5585990000003' },
     };
-    contacts.ka = { id: 'ka', conversations: [] }; contacts.kc = { id: 'kc', conversations: [] };
+    contacts.ka = { id: 'ka', conversations: [] }; contacts.kb = { id: 'kb', conversations: [] }; contacts.kc = { id: 'kc', conversations: [] };
     await app.distributor.run({ now: Date.now() + 60_000 });
     const puts = revvyWrites.filter((w) => w.method === 'PUT');
     assert.deepEqual(puts.map((w) => [w.path, w.body.assigned_user_id]), [['/api/v1/deals/pulou', 'u-ana'], ['/api/v1/deals/normal', 'u-eli']]);
+    const tags = revvyWrites.filter((w) => w.path === '/api/v1/contacts/tags').map((w) => w.body);
+    assert.deepEqual(tags.find((t) => t.contact_id === 'kb'), { contact_id: 'kb', tag_ids: ['t-eli'] }, 'card que a Eli já tinha pego ganha a etiqueta dela');
+  } finally { await stopApp(); }
+});
+
+test('distribuição fora do horário: espera a abertura, mas o lead que a atendente pegou fica com ela', async () => {
+  // domingo, 10/10/2026 23h em Fortaleza = 11/10 02:00 UTC
+  const domingo = Date.parse('2026-10-11T02:00:00Z');
+  const segunda7h = Date.parse('2026-10-12T10:00:00Z');
+  await startApp({ DISTRIBUIR_ATENDENTES: 'Ana:u-ana,Eli:u-eli,Ruana:u-ruana', DISTRIBUIR_A_CADA_SEGUNDOS: '0', DISTRIBUIR_HORARIO: 'seg-sab 07:00-20:00' });
+  try {
+    await app.distributor.run({ now: domingo - 300_000 });
+    const at = (s) => new Date(domingo + s * 1000).toISOString();
+    deals = {
+      espera: { id: 'espera', column_id: 'col-novo', created_at: at(1), contact_id: 'k1', contact_phone: '5585990000001' },
+      pegouCard: { id: 'pegouCard', column_id: 'col-novo', assigned_user_id: 'u-ruana', created_at: at(2), contact_id: 'k2', contact_phone: '5585990000002' },
+      pegouConversa: { id: 'pegouConversa', column_id: 'col-novo', created_at: at(3), contact_id: 'k3', contact_phone: '5585990000003' },
+    };
+    contacts.k1 = { id: 'k1', conversations: [{ id: 'c1', status: 'open' }] };
+    contacts.k2 = { id: 'k2', conversations: [{ id: 'c2', status: 'open' }] };
+    contacts.k3 = { id: 'k3', conversations: [{ id: 'c3', status: 'open', assigned_user_id: 'u-eli' }] };
+    const r = await app.distributor.run({ now: domingo + 10_000 });
+    assert.deepEqual(r, { fechado: true, pegos: 2 });
+    const puts = revvyWrites.filter((w) => w.method === 'PUT');
+    assert.deepEqual(puts.map((w) => [w.path, w.body.assigned_user_id]), [['/api/v1/deals/pegouConversa', 'u-eli']], 'card da Ruana não é regravado; o da conversa da Eli vai para ela');
+    assert.deepEqual(revvyWrites.filter((w) => w.path === '/api/v1/conversations/transfer').map((w) => w.body), [{ conversation_id: 'c2', user_id: 'u-ruana' }]);
+    assert.deepEqual(revvyWrites.filter((w) => w.path === '/api/v1/contacts/tags').map((w) => w.body), [{ contact_id: 'k2', tag_ids: ['t-ruana'] }, { contact_id: 'k3', tag_ids: ['t-eli'] }]);
+    assert.deepEqual(app.store.state.distribuicao.contagem, {}, 'pegar o lead não gasta a vez');
+
+    revvyWrites = [];
+    await app.distributor.run({ now: segunda7h });
+    assert.deepEqual(revvyWrites.filter((w) => w.method === 'PUT').map((w) => [w.path, w.body.assigned_user_id]), [['/api/v1/deals/espera', 'u-ana']], 'segunda às 7h o que esperava entra no rodízio');
   } finally { await stopApp(); }
 });
 

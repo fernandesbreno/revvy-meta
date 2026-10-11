@@ -102,13 +102,13 @@ export class Distributor {
   }
 
   /**
-   * Negócios novos ainda sem atendente: os da coluna de entrada e os que já pularam para uma coluna
-   * seguinte sem ganhar dona (o lead respondeu antes da distribuição e a automação moveu o card).
+   * Negócios novos ainda não tratados: os da coluna de entrada e os que já pularam para uma coluna
+   * seguinte antes da distribuição (o lead respondeu e a automação moveu o card).
    */
   async newDeals(columnId) {
     const out = await this.dealsIn(columnId);
     for (const id of this.extraColumnIds || []) {
-      for (const d of await this.dealsIn(id)) if (!(d.assigned_user_id || d.assigned_user?.id)) out.push(d);
+      out.push(...await this.dealsIn(id));
     }
     const st = this.st;
     const seen = new Set();
@@ -131,16 +131,34 @@ export class Distributor {
     return a;
   }
 
-  async assign(deal, who) {
-    await this.revvy.request(`/api/v1/deals/${encodeURIComponent(deal.id)}`, 0, { method: 'PUT', body: { assigned_user_id: who.id } });
+  /** Quem já é dona do negócio ou da conversa (a atendente pegou o lead antes da distribuição). */
+  ownerOf(deal, contact) {
+    const ids = [deal.assigned_user_id, deal.assigned_user?.id];
+    for (const c of contact?.conversations || []) if (c.status !== 'closed') ids.push(c.assigned_user_id, c.assigned_user?.id, c.user_id);
+    const id = ids.find(Boolean);
+    if (!id) return null;
+    const known = this.cfg.distribuir.atendentes.find((a) => a.id === id);
+    return known || { id, nome: deal.assigned_user?.id === id ? deal.assigned_user.name : '' };
+  }
+
+  /**
+   * Põe o negócio, as conversas abertas e a etiqueta na atendente. Quando ela já é a dona do card
+   * (pegou o lead sozinha), o card não é regravado, para não disparar a saudação de novo.
+   */
+  async assign(deal, who, contact = null) {
+    const dealOwner = deal.assigned_user_id || deal.assigned_user?.id;
+    if (dealOwner !== who.id) {
+      await this.revvy.request(`/api/v1/deals/${encodeURIComponent(deal.id)}`, 0, { method: 'PUT', body: { assigned_user_id: who.id } });
+    }
     if (!deal.contact_id) return;
-    const contact = await this.revvy.getContact(deal.contact_id);
+    contact ||= await this.revvy.getContact(deal.contact_id);
     const convs = (contact.conversations || []).filter((c) => c.status !== 'closed');
     for (const c of convs) {
+      if ((c.assigned_user_id || c.assigned_user?.id || c.user_id) === who.id) continue;
       await this.revvy.request('/api/v1/conversations/transfer', 0, { method: 'POST', body: { conversation_id: c.id, user_id: who.id } });
     }
     // etiqueta com o nome da atendente, aplicada pela API (a aplicada por workflow não chega ao WhatsApp Business)
-    const tagId = this.cfg.distribuir.etiquetas && await this.tagFor(who.nome);
+    const tagId = this.cfg.distribuir.etiquetas && who.nome && await this.tagFor(who.nome);
     if (tagId && !(contact.tags || []).some((t) => t.id === tagId)) {
       try {
         await this.revvy.request('/api/v1/contacts/tags', 0, { method: 'POST', body: { contact_id: deal.contact_id, tag_ids: [tagId] } });
@@ -166,8 +184,11 @@ export class Distributor {
     const nowS = Math.floor(now / 1000);
     const st = this.st;
     if (!st.inicio) { st.inicio = nowS; this.store.save(); } // só distribui o que entrar daqui para frente
-    // fora do horário os leads esperam; na abertura saem todos, do mais antigo para o mais novo
-    if (!isOpen(this.cfg.distribuir.horario, now)) { this.running = false; return { fechado: true }; }
+    // fora do horário os leads esperam a abertura (do mais antigo para o mais novo); só os que uma
+    // atendente já pegou sozinha são passados para ela, e isso é conferido a cada 2 minutos
+    const open = isOpen(this.cfg.distribuir.horario, now);
+    if (!open && this.lastClosedCheck && now - this.lastClosedCheck < 120_000) { this.running = false; return { fechado: true }; }
+    if (!open) this.lastClosedCheck = now;
     let done = 0;
     try {
       const columnId = await this.resolveColumn();
@@ -176,11 +197,17 @@ export class Distributor {
           st.feitos[deal.id] = nowS; // Instagram, Facebook etc.: fica como está, sem dona nem saudação
           continue;
         }
-        const who = this.pick(deal.contact_id, nowS);
+        let who;
+        let contact = null;
         try {
-          await this.assign(deal, who);
+          if (deal.contact_id) contact = await this.revvy.getContact(deal.contact_id);
+          const owner = this.ownerOf(deal, contact);
+          if (owner) who = { ...owner, pegou: true }; // a atendente abordou antes: fica com ela, sem gastar a vez
+          else if (!open) continue; // espera a abertura
+          else who = this.pick(deal.contact_id, nowS);
+          await this.assign(deal, who, contact);
         } catch (err) {
-          if (!who.repetido) st.vez = (st.vez + this.cfg.distribuir.atendentes.length - 1) % this.cfg.distribuir.atendentes.length; // devolve a vez
+          if (who && !who.repetido && !who.pegou) st.vez = (st.vez + this.cfg.distribuir.atendentes.length - 1) % this.cfg.distribuir.atendentes.length; // devolve a vez
           this.logger.error(`[distribuição] negócio ${deal.id}: ${err.message}`);
           st.falhas ||= {};
           st.falhas[deal.id] = (st.falhas[deal.id] || 0) + 1;
@@ -189,15 +216,16 @@ export class Distributor {
         }
         st.feitos[deal.id] = nowS;
         if (deal.contact_id) st.contatos[deal.contact_id] = { id: who.id, em: nowS };
-        if (!who.repetido) st.contagem[who.nome] = (st.contagem[who.nome] || 0) + 1;
+        if (!who.repetido && !who.pegou) st.contagem[who.nome] = (st.contagem[who.nome] || 0) + 1;
         done++;
-        this.store.log({ resultado: 'distribuído', negocio: deal.id, atendente: who.nome, ...(who.repetido ? { detalhe: 'mesma atendente do contato' } : {}) });
-        this.logger.log(`[distribuição] negócio ${deal.id} → ${who.nome}${who.repetido ? ' (contato já era dela)' : ''}`);
+        const detalhe = who.pegou ? 'a atendente pegou o lead antes da distribuição' : who.repetido ? 'mesma atendente do contato' : undefined;
+        this.store.log({ resultado: 'distribuído', negocio: deal.id, atendente: who.nome || who.id, ...(detalhe ? { detalhe } : {}) });
+        this.logger.log(`[distribuição] negócio ${deal.id} → ${who.nome || who.id}${detalhe ? ` (${detalhe})` : ''}`);
       }
       this.prune(nowS);
       this.store.save();
       this.lastError = '';
-      return { distribuidos: done };
+      return open ? { distribuidos: done } : { fechado: true, pegos: done };
     } catch (err) {
       const msg = `[distribuição] não consegui ler os negócios: ${err.message}`;
       if (msg !== this.lastError) this.logger.error(msg);
