@@ -88,8 +88,11 @@ A saudação com o nome de cada atendente sai do Revvy, de um workflow por atend
 | `DISTRIBUIR_A_CADA_SEGUNDOS` | `20` | Intervalo da verificação |
 | `DISTRIBUIR_COLUNA` | `Novo Lead` | Coluna de onde saem os negócios a distribuir |
 | `DISTRIBUIR_ETIQUETAS` | `true` | Põe no contato a etiqueta com o nome da atendente (pela API, para sincronizar com o WhatsApp Business) |
+| `DISTRIBUIR_COLUNAS_SEM_DONA` | `Em Atendimento` | Colunas seguintes onde o programa também procura negócios novos **sem atendente** (o lead respondeu antes da distribuição e a automação já moveu o card). Separe várias por vírgula; vazio desliga |
 | `DISTRIBUIR_SO_WHATSAPP` | `true` | Só distribui contatos com telefone (WhatsApp e formulário). Instagram e Facebook ficam sem dona e sem saudação. `false` distribui todos |
-| `DISTRIBUIR_HORARIO` | vazio (24 horas) | Horário de atendimento, no fuso de Fortaleza. Ex.: `seg-sex 08:00-18:00; sab 08:00-12:00`. Fora dele os leads esperam e, na abertura, são distribuídos do mais antigo para o mais novo |
+| `DISTRIBUIR_IGNORAR_ETIQUETAS` | `Pago` | Contatos com estas etiquetas (separadas por vírgula) não são distribuídos nem saudados: é o cliente que já comprou e voltou a falar. Vazio desliga |
+| `DISTRIBUIR_ETIQUETA_ABORDADO` | `Abordado` | Quando a atendente já abordou o lead pelo celular (a conversa existe mais de 1 minuto antes do card), o app põe esta etiqueta e depois atribui. O workflow de saudação pula quem tem esta etiqueta. Vazio desliga |
+| `DISTRIBUIR_HORARIO` | vazio (24 horas) | Horário de atendimento, no fuso de Fortaleza. Ex.: `seg-sex 08:00-18:00; sab 08:00-12:00`. Fora dele os leads esperam e, na abertura, são distribuídos do mais antigo para o mais novo. Lead que uma atendente pegou antes (é a responsável do card ou da conversa) fica com ela a qualquer hora: o programa põe a etiqueta e transfere a conversa, sem gastar a vez e sem regravar o card |
 
 O `/status` mostra quantos leads cada uma recebeu e quem é a próxima.
 
