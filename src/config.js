@@ -74,6 +74,8 @@ export function loadConfig(env = process.env) {
       etiquetas: env.DISTRIBUIR_ETIQUETAS !== 'false',
       soWhatsapp: env.DISTRIBUIR_SO_WHATSAPP !== 'false',
       // contatos com estas etiquetas (ex.: cliente que já comprou) não são distribuídos nem saudados
+      // etiqueta posta antes de atribuir quando a atendente já abordou o lead pelo celular; o workflow de saudação pula quem a tem
+      etiquetaAbordado: String(env.DISTRIBUIR_ETIQUETA_ABORDADO ?? 'Abordado').trim(),
       ignorarEtiquetas: String(env.DISTRIBUIR_IGNORAR_ETIQUETAS ?? 'Pago').split(',').map((t) => t.trim()).filter(Boolean),
       horario: parseHours(env.DISTRIBUIR_HORARIO),
       horarioTexto: env.DISTRIBUIR_HORARIO || '24 horas',

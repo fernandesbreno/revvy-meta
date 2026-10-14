@@ -143,11 +143,27 @@ export class Distributor {
   }
 
   /**
+   * A empresa falou primeiro: a conversa aberta é mais de 1 minuto mais antiga que o card. O Revvy só cria o
+   * card quando o lead responde, então isso é a atendente abordando pelo celular (ex.: lead vindo do Instagram).
+   */
+  abordadoAntes(deal, contact) {
+    const card = revvyTime(deal.created_at);
+    if (!Number.isFinite(card)) return false;
+    return (contact?.conversations || []).some((c) => c.status !== 'closed' && revvyTime(c.created_at) < card - 60);
+  }
+
+  /**
    * Põe o negócio, as conversas abertas e a etiqueta na atendente. Quando ela já é a dona do card
    * (pegou o lead sozinha), o card não é regravado, para não disparar a saudação de novo.
    */
   async assign(deal, who, contact = null) {
     const dealOwner = deal.assigned_user_id || deal.assigned_user?.id;
+    if (who.abordado && deal.contact_id && dealOwner !== who.id) {
+      // a etiqueta entra antes da atribuição, porque é ela que faz o workflow de saudação pular este lead
+      const abordadoId = this.cfg.distribuir.etiquetaAbordado && await this.tagFor(this.cfg.distribuir.etiquetaAbordado);
+      if (!abordadoId) throw new Error(`etiqueta ${this.cfg.distribuir.etiquetaAbordado} não existe no Revvy; sem ela a saudação sairia`);
+      await this.revvy.request('/api/v1/contacts/tags', 0, { method: 'POST', body: { contact_id: deal.contact_id, tag_ids: [abordadoId] } });
+    }
     if (dealOwner !== who.id) {
       await this.revvy.request(`/api/v1/deals/${encodeURIComponent(deal.id)}`, 0, { method: 'PUT', body: { assigned_user_id: who.id } });
     }
@@ -211,6 +227,7 @@ export class Distributor {
           }
           const owner = this.ownerOf(deal, contact);
           if (owner) who = { ...owner, pegou: true }; // a atendente abordou antes: fica com ela, sem gastar a vez
+          else if (this.cfg.distribuir.etiquetaAbordado && this.abordadoAntes(deal, contact)) who = { ...this.pick(deal.contact_id, nowS), abordado: true }; // abordou pelo celular: atribui sem saudação, a qualquer hora
           else if (!open) continue; // espera a abertura
           else who = this.pick(deal.contact_id, nowS);
           await this.assign(deal, who, contact);
@@ -226,7 +243,7 @@ export class Distributor {
         if (deal.contact_id) st.contatos[deal.contact_id] = { id: who.id, em: nowS };
         if (!who.repetido && !who.pegou) st.contagem[who.nome] = (st.contagem[who.nome] || 0) + 1;
         done++;
-        const detalhe = who.pegou ? 'a atendente pegou o lead antes da distribuição' : who.repetido ? 'mesma atendente do contato' : undefined;
+        const detalhe = who.pegou ? 'a atendente pegou o lead antes da distribuição' : who.abordado ? 'a atendente abordou antes pelo celular (sem saudação)' : who.repetido ? 'mesma atendente do contato' : undefined;
         this.store.log({ resultado: 'distribuído', negocio: deal.id, atendente: who.nome || who.id, ...(detalhe ? { detalhe } : {}) });
         this.logger.log(`[distribuição] negócio ${deal.id} → ${who.nome || who.id}${detalhe ? ` (${detalhe})` : ''}`);
       }

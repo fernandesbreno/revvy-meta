@@ -52,7 +52,7 @@ before(async () => {
       let m;
       if ((m = u.pathname.match(/^\/api\/v1\/deals\/([^/]+)\/stage-history$/))) return send(200, { success: true, data: { history: histories[m[1]] || [] } });
       if ((m = u.pathname.match(/^\/api\/v1\/deals\/([^/]+)$/))) return deals[m[1]] ? send(200, { success: true, data: deals[m[1]] }) : send(404, {});
-      if (u.pathname === '/api/v1/tags') return send(200, { success: true, data: [{ id: 't-ana', name: 'Ana' }, { id: 't-eli', name: 'Eli' }, { id: 't-ruana', name: 'Ruana' }] });
+      if (u.pathname === '/api/v1/tags') return send(200, { success: true, data: [{ id: 't-ana', name: 'Ana' }, { id: 't-eli', name: 'Eli' }, { id: 't-ruana', name: 'Ruana' }, { id: 't-abordado', name: 'Abordado' }] });
       if (u.pathname === '/api/v1/columns') return send(200, { success: true, pipelines: [{ id: 'p1', name: 'Comercial', columns: [{ id: 'col-vendido', name: 'Venda Concluída' }, { id: 'col-novo', name: 'Novo Lead' }, { id: 'col-atend', name: 'Em Atendimento' }] }], count: 1 });
       if (u.pathname === '/api/v1/deals') return send(200, { success: true, data: Object.values(deals), pagination: { has_more: false } });
       if ((m = u.pathname.match(/^\/api\/v1\/contacts\/([^/]+)$/))) return contacts[m[1]] ? send(200, { success: true, data: contacts[m[1]] }) : send(404, {});
@@ -409,6 +409,26 @@ test('distribuição: cliente com a etiqueta Pago que volta a falar não é dist
     const puts = revvyWrites.filter((w) => w.method === 'PUT').map((w) => w.path);
     assert.deepEqual(puts, ['/api/v1/deals/novo']);
     assert.ok(!revvyWrites.some((w) => w.body?.contact_id === 'kp'), 'cliente fica sem dona, etiqueta e transferência');
+  } finally { await stopApp(); }
+});
+
+test('distribuição: lead que a atendente abordou pelo celular ganha a etiqueta Abordado antes de ser atribuído', async () => {
+  await startApp({ DISTRIBUIR_ATENDENTES: 'Ana:u-ana', DISTRIBUIR_A_CADA_SEGUNDOS: '0' });
+  try {
+    await app.distributor.run();
+    const t0 = Date.now() + 1000;
+    const iso = (ms) => new Date(ms).toISOString();
+    deals = {
+      abordado: { id: 'abordado', column_id: 'col-novo', created_at: iso(t0 + 150_000), contact_id: 'kab', contact_phone: '5585990000011' },
+      normal: { id: 'normal2', column_id: 'col-novo', created_at: iso(t0 + 2000), contact_id: 'kno', contact_phone: '5585990000012' },
+    };
+    contacts.kab = { id: 'kab', conversations: [{ id: 'cv-ab', status: 'waiting', created_at: iso(t0) }] };
+    contacts.kno = { id: 'kno', conversations: [{ id: 'cv-no', status: 'waiting', created_at: iso(t0 + 2000) }] };
+    await app.distributor.run({ now: t0 + 200_000 });
+    const ab = revvyWrites.filter((w) => w.body?.contact_id === 'kab' || w.path === '/api/v1/deals/abordado');
+    assert.deepEqual([ab[0].path, ab[0].body], ['/api/v1/contacts/tags', { contact_id: 'kab', tag_ids: ['t-abordado'] }], 'etiqueta Abordado vem antes da atribuição');
+    assert.equal(ab[1].path, '/api/v1/deals/abordado');
+    assert.ok(!revvyWrites.some((w) => w.body?.contact_id === 'kno' && w.body?.tag_ids?.includes('t-abordado')), 'lead normal não ganha Abordado');
   } finally { await stopApp(); }
 });
 
