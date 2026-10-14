@@ -395,6 +395,23 @@ test('distribuição: card que foi para Em Atendimento sem dona também é distr
   } finally { await stopApp(); }
 });
 
+test('distribuição: cliente com a etiqueta Pago que volta a falar não é distribuído', async () => {
+  await startApp({ DISTRIBUIR_ATENDENTES: 'Ana:u-ana', DISTRIBUIR_A_CADA_SEGUNDOS: '0' });
+  try {
+    await app.distributor.run();
+    const at = (s) => new Date(Date.now() + 1000 + s * 1000).toISOString();
+    deals = {
+      cliente: { id: 'cliente', column_id: 'col-novo', created_at: at(1), contact_id: 'kp', contact_phone: '5585990000009' },
+      novo: { id: 'novo', column_id: 'col-novo', created_at: at(2), contact_id: 'kn', contact_phone: '5585990000010' },
+    };
+    contacts.kp = { id: 'kp', conversations: [], tags: [{ id: 't-pago', name: 'Pago' }] }; contacts.kn = { id: 'kn', conversations: [] };
+    await app.distributor.run({ now: Date.now() + 60_000 });
+    const puts = revvyWrites.filter((w) => w.method === 'PUT').map((w) => w.path);
+    assert.deepEqual(puts, ['/api/v1/deals/novo']);
+    assert.ok(!revvyWrites.some((w) => w.body?.contact_id === 'kp'), 'cliente fica sem dona, etiqueta e transferência');
+  } finally { await stopApp(); }
+});
+
 test('distribuição fora do horário: espera a abertura, mas o lead que a atendente pegou fica com ela', async () => {
   // domingo, 10/10/2026 23h em Fortaleza = 11/10 02:00 UTC
   const domingo = Date.parse('2026-10-11T02:00:00Z');

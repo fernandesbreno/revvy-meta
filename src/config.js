@@ -73,6 +73,8 @@ export function loadConfig(env = process.env) {
       colunasSemDona: String(env.DISTRIBUIR_COLUNAS_SEM_DONA ?? 'Em Atendimento').split(',').map((c) => c.trim()).filter(Boolean),
       etiquetas: env.DISTRIBUIR_ETIQUETAS !== 'false',
       soWhatsapp: env.DISTRIBUIR_SO_WHATSAPP !== 'false',
+      // contatos com estas etiquetas (ex.: cliente que já comprou) não são distribuídos nem saudados
+      ignorarEtiquetas: String(env.DISTRIBUIR_IGNORAR_ETIQUETAS ?? 'Pago').split(',').map((t) => t.trim()).filter(Boolean),
       horario: parseHours(env.DISTRIBUIR_HORARIO),
       horarioTexto: env.DISTRIBUIR_HORARIO || '24 horas',
     },

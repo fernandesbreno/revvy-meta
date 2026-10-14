@@ -10,6 +10,7 @@
  */
 
 const STICKY_S = 30 * 86400;
+const norm = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
 
 /** "2026-10-10 00:38:18.98-03" (formato do Revvy) -> epoch em segundos. */
 export function revvyTime(s) {
@@ -174,7 +175,6 @@ export class Distributor {
       const r = await this.revvy.request('/api/v1/tags');
       this.tags = r.data || r.tags || [];
     }
-    const norm = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
     return this.tags.find((t) => norm(t.name) === norm(nome))?.id || null;
   }
 
@@ -201,6 +201,14 @@ export class Distributor {
         let contact = null;
         try {
           if (deal.contact_id) contact = await this.revvy.getContact(deal.contact_id);
+          const ignorar = (this.cfg.distribuir.ignorarEtiquetas || []).map(norm);
+          const etiqueta = (contact?.tags || []).find((t) => ignorar.includes(norm(t.name)));
+          if (etiqueta) { // cliente que já comprou: o card fica como está, sem dona nem saudação
+            st.feitos[deal.id] = nowS;
+            this.store.log({ resultado: 'ignorado', negocio: deal.id, detalhe: `contato com a etiqueta ${etiqueta.name}` });
+            this.logger.log(`[distribuição] negócio ${deal.id} ignorado (contato com a etiqueta ${etiqueta.name})`);
+            continue;
+          }
           const owner = this.ownerOf(deal, contact);
           if (owner) who = { ...owner, pegou: true }; // a atendente abordou antes: fica com ela, sem gastar a vez
           else if (!open) continue; // espera a abertura
