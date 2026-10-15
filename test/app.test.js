@@ -134,7 +134,7 @@ test('lead de formulário: envia pela rota CRM, preenche etapas puladas e não d
     await settle();
     assert.equal(metaCalls.length, 1);
     const evs = metaCalls[0].body.data;
-    assert.deepEqual(evs.map((e) => e.event_name), ['Lead', 'Lead Qualificado', 'Orcamento Enviado', 'Avaliacao Marcada', 'Venda']);
+    assert.deepEqual(evs.map((e) => e.event_name), ['Lead', 'Orcamento Enviado', 'Avaliacao Marcada', 'Venda']);
     const venda = evs.at(-1);
     assert.equal(venda.action_source, 'system_generated');
     assert.equal(venda.user_data.lead_id, 1234567890123456);
@@ -309,7 +309,7 @@ test('reconciliação envia movimentações que o webhook perdeu', async () => {
     assert.equal(r.queued, 2, 'ignora a de 10 dias atrás');
     await settle();
     const names = metaCalls.flatMap((c) => c.body.data.map((e) => e.event_name)).sort();
-    assert.deepEqual(names, ['Lead', 'Lead Qualificado']);
+    assert.deepEqual(names, ['Lead'], 'Novo Lead não envia; o Lead sai no Lead Qualificado');
     const again = await reconcile({ cfg, store: app.store, revvy: app.processor.revvy, processor: app.processor, logger: quiet, pauseMs: 0 });
     assert.equal(again.queued, 0, 'não repete o que já foi enviado');
   } finally { await stopApp(); }
