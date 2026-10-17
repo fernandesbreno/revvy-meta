@@ -134,7 +134,7 @@ test('lead de formulário: envia pela rota CRM, preenche etapas puladas e não d
     await settle();
     assert.equal(metaCalls.length, 1);
     const evs = metaCalls[0].body.data;
-    assert.deepEqual(evs.map((e) => e.event_name), ['Lead', 'Lead Qualificado', 'Orcamento Enviado', 'Avaliacao Marcada', 'Venda']);
+    assert.deepEqual(evs.map((e) => e.event_name), ['Lead', 'Orcamento Enviado', 'Avaliacao Marcada', 'Venda']);
     const venda = evs.at(-1);
     assert.equal(venda.action_source, 'system_generated');
     assert.equal(venda.user_data.lead_id, 1234567890123456);
@@ -200,6 +200,24 @@ test('outras origens: rota padrão com dados em hash e fbc; coluna desconhecida 
     assert.equal(e.user_data.fbc, 'fb.1.123.abc');
     assert.deepEqual(e.user_data.ct, [sha('saopaulo')]);
     assert.equal(e.user_data.lead_id, undefined);
+  } finally { await stopApp(); }
+});
+
+test('Lead sai na primeira etapa entre Lead Qualificado, Orçamento e Avaliação, uma vez por contato', async () => {
+  contacts.c1.custom_fields = {};
+  deals.d2 = { ...deals.d1, id: 'd2' };
+  await startApp();
+  try {
+    await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Novo Lead' } } });
+    await settle();
+    assert.equal(metaCalls.length, 0, 'Novo Lead não envia nada');
+    await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Orçamento Enviado' } } });
+    await settle();
+    assert.deepEqual(metaCalls[0].body.data.map((e) => e.event_name), ['Lead', 'InitiateCheckout'], 'pulou o Lead Qualificado: o Lead sai junto');
+    await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Lead Qualificado' } } });
+    await signedPost({ data: { deal_id: 'd2', to_column: { name: 'Lead Qualificado' } } });
+    await settle();
+    assert.equal(metaCalls.length, 1, 'o mesmo contato em outro card não gera outro Lead');
   } finally { await stopApp(); }
 });
 
@@ -309,7 +327,7 @@ test('reconciliação envia movimentações que o webhook perdeu', async () => {
     assert.equal(r.queued, 2, 'ignora a de 10 dias atrás');
     await settle();
     const names = metaCalls.flatMap((c) => c.body.data.map((e) => e.event_name)).sort();
-    assert.deepEqual(names, ['Lead', 'Lead Qualificado']);
+    assert.deepEqual(names, ['Lead'], 'Novo Lead não envia; o Lead sai no Lead Qualificado');
     const again = await reconcile({ cfg, store: app.store, revvy: app.processor.revvy, processor: app.processor, logger: quiet, pauseMs: 0 });
     assert.equal(again.queued, 0, 'não repete o que já foi enviado');
   } finally { await stopApp(); }

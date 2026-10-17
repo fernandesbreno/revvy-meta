@@ -1,5 +1,12 @@
 import { buildEvent, detectRoute, findStage } from './meta.js';
 
+// Etapa com "uma_vez_por_contato": o evento sai só no primeiro card do contato que chegar nela
+// (um contato que volta e abre outro card não conta como lead de novo)
+function contactKey(stage, contact, event) {
+  const id = contact?.id || contact?.phone;
+  return stage.uma_vez_por_contato && id ? `contato:${id}:${event.event_name}` : null;
+}
+
 const RETRY_DELAYS_S = [60, 300, 900, 3600, 3 * 3600, 6 * 3600]; // depois disso desiste
 
 /**
@@ -101,6 +108,7 @@ export class Processor {
 
     const events = [];
     const skipped = [];
+    const contactKeys = [];
     const base = Number(job.eventTime) || Math.floor(Date.now() / 1000);
     stages.forEach((s, i) => {
       const isCurrent = s === stage;
@@ -108,7 +116,10 @@ export class Processor {
       const r = buildEvent({ cfg: this.cfg, deal, contact, stage: s, eventTime: t, routeInfo, lossReason: job.lossReason });
       if (r.skip) { if (isCurrent) skipped.push(r.skip); return; }
       if (this.store.wasSent(r.event.event_id)) { if (isCurrent) skipped.push('etapa já enviada antes'); return; }
+      const ck = contactKey(s, contact, r.event);
+      if (ck && this.store.wasSent(ck)) { if (isCurrent) skipped.push(`${r.event.event_name} já enviado antes para este contato`); return; }
       events.push(r.event);
+      if (ck) contactKeys.push(ck);
     });
 
     const test = Boolean(this.cfg.meta.testEventCode);
@@ -121,6 +132,7 @@ export class Processor {
 
     const resp = await this.meta.send(events, { route: routeInfo.route });
     for (const e of events) this.store.markSent(e.event_id, { test });
+    for (const k of contactKeys) this.store.markSent(k, { test });
     this.store.save();
     return {
       resultado: 'enviado',
