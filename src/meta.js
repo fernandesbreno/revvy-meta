@@ -139,8 +139,9 @@ export class MetaClient {
     this.fetch = fetchImpl;
   }
 
-  /** Conjunto de dados de cada rota: Instagram e Messenger podem ter um próprio. */
+  /** Conjunto de dados de cada rota: WhatsApp, Instagram e Messenger podem ter um próprio. */
   datasetFor(route) {
+    if (route === 'whatsapp' && this.cfg.waDatasetId) return this.cfg.waDatasetId;
     if (route === 'instagram' && this.cfg.igDatasetId) return this.cfg.igDatasetId;
     if (route === 'messenger' && this.cfg.pageDatasetId) return this.cfg.pageDatasetId;
     return this.cfg.datasetId;

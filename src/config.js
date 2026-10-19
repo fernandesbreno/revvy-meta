@@ -41,6 +41,7 @@ export function loadConfig(env = process.env) {
       igDatasetId: env.META_DATASET_ID_INSTAGRAM || '',
       pageId: env.FACEBOOK_PAGE_ID || '',
       pageDatasetId: env.META_DATASET_ID_MESSENGER || '',
+      waDatasetId: env.META_DATASET_ID_WHATSAPP || '',
       testEventCode: env.META_TEST_EVENT_CODE || '',
       leadEventSource: env.LEAD_EVENT_SOURCE || 'Revvy',
       currency: env.MOEDA || 'BRL',

@@ -286,6 +286,26 @@ test('WhatsApp de anúncio: lê o ctwa_clid da origem da conversa no Revvy; se a
   } finally { await stopApp(); }
 });
 
+test('WhatsApp de anúncio com conjunto de dados próprio: clique vai para META_DATASET_ID_WHATSAPP, telefone continua no principal', async () => {
+  deals.d1.contact = { id: 'c3', name: '5585987106434', phone: '5585987106434' };
+  contacts.c3 = { id: 'c3', name: '5585987106434', phone: '5585987106434', custom_fields: [{ key: 'fbc', value: '' }],
+    source: { source_type: 'ads', source_metadata: { ctwa_clid: 'AfiFMp123' } } };
+  await startApp({ PREENCHER_ETAPAS_PULADAS: 'false', META_DATASET_ID_WHATSAPP: '222' });
+  try {
+    await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Lead Qualificado' } } });
+    await settle();
+    assert.match(metaCalls[0].url, /\/222\/events/);
+    assert.equal(metaCalls[0].body.data[0].event_name, 'LeadSubmitted');
+
+    rejectWhatsapp = true;
+    await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Orçamento Enviado' } } });
+    await settle();
+    assert.equal(metaCalls.length, 2); // a recusada não fica registrada
+    assert.match(metaCalls[1].url, /\/111\/events/);
+    assert.equal(metaCalls[1].body.data[0].event_name, 'InitiateCheckout');
+  } finally { await stopApp(); }
+});
+
 test('falha temporária da Meta: tenta de novo e o trabalho sobrevive', async () => {
   metaFail = 10; // falha mais vezes que as tentativas imediatas
   await startApp({ PREENCHER_ETAPAS_PULADAS: 'false' });

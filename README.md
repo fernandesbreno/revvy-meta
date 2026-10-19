@@ -43,6 +43,7 @@ Proteções:
    | `META_TEST_EVENT_CODE` | Aba **Testar eventos** do Gerenciador. Use só durante os testes e depois apague |
    | `ADMIN_TOKEN` | Invente uma senha longa; serve para abrir a página `/status` |
    | `INSTAGRAM_BUSINESS_ACCOUNT_ID` | ID da conta profissional do Instagram (Configurações do negócio → Contas → Contas do Instagram). Sem ele, leads do Direct não são enviados |
+   | `META_DATASET_ID_WHATSAPP` | Opcional. Conjunto de dados ligado à conta do WhatsApp, quando é outro que não o `META_DATASET_ID` (os eventos de clique para WhatsApp vão para ele; os demais continuam no `META_DATASET_ID`) |
    | `META_DATASET_ID_INSTAGRAM` | Opcional. Só se a Meta criar um conjunto de dados separado para o Instagram; se vazio, usa `META_DATASET_ID` |
    | `WHATSAPP_BUSINESS_ACCOUNT_ID` | ID da conta do WhatsApp Business (Gerenciador do WhatsApp). Com ele, leads de anúncio de clique para WhatsApp vão pelo `ctwa_clid` que o Revvy guarda na origem da conversa; se a Meta recusar, o programa envia pelo telefone |
    | `FACEBOOK_PAGE_ID` / `META_DATASET_ID_MESSENGER` | Opcional, só se usar o Messenger |
