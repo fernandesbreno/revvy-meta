@@ -11,6 +11,7 @@ import { verifySignature, parseWebhook } from '../src/revvy.js';
 import { reconcile } from '../src/reconcile.js';
 import { leadContact } from '../src/leads.js';
 import { revvyTime, parseAttendants, parseHours, isOpen } from '../src/distribuidor.js';
+import { hashedUserData } from '../src/meta.js';
 
 const SECRET = 'segredo-teste';
 const sha = (v) => crypto.createHash('sha256').update(v).digest('hex');
@@ -554,4 +555,12 @@ test('horário da distribuição', () => {
   assert.equal(isOpen(h, at('2026-10-11T14:00:00Z')), false, 'domingo');
   assert.equal(isOpen([], at('2026-10-11T05:00:00Z')), true, 'sem horário = 24h');
   assert.throws(() => parseHours('segunda 8-18'));
+});
+
+test('estado vem do DDD quando o contato não tem estado no Revvy', () => {
+  const h = (v) => crypto.createHash('sha256').update(v).digest('hex');
+  assert.deepEqual(hashedUserData({ phone: '5586988828131' }).st, [h('pi')]);
+  assert.deepEqual(hashedUserData({ phone: '85999990000' }).st, [h('ce')]);
+  assert.deepEqual(hashedUserData({ phone: '5586988828131', state: 'CE' }).st, [h('ce')]);
+  assert.equal(hashedUserData({ phone: 'instagram:123' }).st, undefined);
 });

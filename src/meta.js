@@ -5,6 +5,16 @@ const sha256 = (v) => crypto.createHash('sha256').update(v).digest('hex');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const MAX_AGE = 7 * 24 * 3600 - 300; // a Meta aceita até 7 dias para trás
 
+// Estado de cada DDD brasileiro: o contato do WhatsApp quase nunca tem estado preenchido no Revvy
+const UF_POR_DDD = {
+  ac: [68], al: [82], am: [92, 97], ap: [96], ba: [71, 73, 74, 75, 77], ce: [85, 88], df: [61],
+  es: [27, 28], go: [62, 64], ma: [98, 99], mg: [31, 32, 33, 34, 35, 37, 38], ms: [67], mt: [65, 66],
+  pa: [91, 93, 94], pb: [83], pe: [81, 87], pi: [86, 89], pr: [41, 42, 43, 44, 45, 46], rj: [21, 22, 24],
+  rn: [84], ro: [69], rr: [95], rs: [51, 53, 54, 55], sc: [47, 48, 49], se: [79],
+  sp: [11, 12, 13, 14, 15, 16, 17, 18, 19], to: [63],
+};
+const DDD_UF = Object.fromEntries(Object.entries(UF_POR_DDD).flatMap(([uf, ddds]) => ddds.map((d) => [d, uf])));
+
 /** Dados do contato em hash, no formato que a Meta pede. */
 export function hashedUserData(contact) {
   const ud = {};
@@ -20,6 +30,7 @@ export function hashedUserData(contact) {
   if (names.length > 1) ud.ln = [sha256(names[names.length - 1])];
   if (contact.city) ud.ct = [sha256(normalize(contact.city).replace(/[^a-z]/g, ''))];
   if (contact.state) ud.st = [sha256(normalize(contact.state).replace(/[^a-z]/g, ''))];
+  else if (phone.startsWith('55') && DDD_UF[phone.slice(2, 4)]) ud.st = [sha256(DDD_UF[phone.slice(2, 4)])];
   ud.country = [sha256('br')];
   if (contact.id) ud.external_id = [sha256(String(contact.id))];
   return ud;
