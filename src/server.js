@@ -7,6 +7,7 @@ import { Processor } from './processor.js';
 import { reconcile } from './reconcile.js';
 import { LeadsImporter } from './leads.js';
 import { Distributor } from './distribuidor.js';
+import { AudioTranscriber, isMessageWebhook } from './audios.js';
 
 export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
   const store = new Store(cfg.dataDir);
@@ -15,6 +16,7 @@ export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
   const processor = new Processor({ cfg, store, revvy, meta, logger });
   const leads = cfg.leads.pageId ? new LeadsImporter({ cfg, store, revvy, fetchImpl, logger }) : null;
   const distributor = cfg.distribuir.atendentes.length ? new Distributor({ cfg, store, revvy, logger }) : null;
+  const audios = new AudioTranscriber({ cfg, store, revvy, fetchImpl, logger });
 
   const json = (res, status, obj) => {
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -53,18 +55,35 @@ export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
       return json(res, 200, { ok: true, esquecidos, conjunto: cfg.meta.datasetId, detalhe: 'reenvio começou; acompanhe em /status' });
     }
 
+    // Transcrição dos áudios da equipe: o que foi feito e os últimos webhooks de mensagem recebidos, para conferir o formato
+    if (req.method === 'GET' && url.pathname === '/audios') {
+      if (!cfg.adminToken || url.searchParams.get('token') !== cfg.adminToken) return json(res, 401, { erro: 'token inválido' });
+      const st = audios.st;
+      return json(res, 200, {
+        ligado: audios.ligado,
+        modelo: cfg.audios.modelo,
+        transcritos_total: Object.values(st.feitos).filter((v) => typeof v === 'number').length,
+        ultimos: st.log.slice(0, 50),
+        ultimos_webhooks: st.amostras,
+      });
+    }
+
     if (req.method === 'POST' && url.pathname === '/webhooks/revvy') {
       const chunks = [];
       req.on('data', (c) => chunks.push(c));
       req.on('end', () => {
         const raw = Buffer.concat(chunks);
         if (cfg.revvy.validateSignature) {
-          const v = verifySignature({
-            secret: cfg.revvy.webhookSecret,
-            timestamp: req.headers['x-webhook-timestamp'],
-            signature: req.headers['x-webhook-signature'],
-            rawBody: raw,
-          });
+          let v;
+          for (const secret of [cfg.revvy.webhookSecret, ...cfg.revvy.extraSecrets]) {
+            v = verifySignature({
+              secret,
+              timestamp: req.headers['x-webhook-timestamp'],
+              signature: req.headers['x-webhook-signature'],
+              rawBody: raw,
+            });
+            if (v.ok) break;
+          }
           if (!v.ok) {
             logger.warn(`[webhook recusado] ${v.reason}`);
             return json(res, 401, { erro: v.reason });
@@ -72,6 +91,8 @@ export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
         }
         let body;
         try { body = JSON.parse(raw.toString('utf8') || '{}'); } catch { return json(res, 400, { erro: 'JSON inválido' }); }
+        // mensagens vão para a transcrição de áudios; não podem cair no parseWebhook, que leria o id como negócio
+        if (isMessageWebhook(body)) return json(res, 200, audios.handle(body));
         const parsed = parseWebhook(body);
         if (!parsed) {
           store.log({ resultado: 'ignorado', detalhe: 'webhook sem negócio', evento: String(body.event || body.type || '') });
@@ -125,8 +146,10 @@ export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
       }
       return new Promise((r) => server.listen(cfg.port, () => r(server)));
     },
+    audios,
     stop() {
       processor.stop();
+      audios.stop();
       clearInterval(reconcileTimer);
       clearInterval(leadsTimer);
       clearInterval(distTimer);
@@ -155,5 +178,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   console.log(cfg.distribuir.atendentes.length
     ? `[distribuição] rodízio entre ${cfg.distribuir.atendentes.map((a) => a.nome).join(', ')} para os negócios novos em "${cfg.distribuir.column}" (a cada ${cfg.distribuir.intervalSeconds} s, horário: ${cfg.distribuir.horarioTexto})`
     : '[distribuição] desligada (preencha DISTRIBUIR_ATENDENTES)');
+  console.log(cfg.audios.ligado && cfg.audios.apiKey
+    ? `[áudios] transcrevendo os áudios da equipe com ${cfg.audios.modelo} e gravando como nota da conversa`
+    : '[áudios] transcrição desligada (TRANSCREVER_AUDIOS_EQUIPE=true e OPENAI_API_KEY)');
   for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => app.stop().then(() => process.exit(0)));
 }
