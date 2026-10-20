@@ -785,3 +785,23 @@ test('áudio do celular: baixa pelo link que vem no aviso, sem precisar consulta
     assert.equal(buf.toString(), 'OggS-direto');
   } finally { await stopApp(); }
 });
+
+test('áudio do celular para cliente com card na Recepção não é transcrito', async () => {
+  deals.dl = { id: 'dl', created_at: ago(60), contact: { id: 'c-laura' }, column: { id: 'col-recep', name: 'Recepção' } };
+  await startApp({ TRANSCREVER_AUDIOS_EQUIPE: 'true', OPENAI_API_KEY: 'sk-teste', TRANSCRICAO_API_URL: mockUrl + '/openai', WHATSAPP_TOKEN: 'tok-wa', META_APP_SECRET: 'segredo-app' });
+  try {
+    for (const t of app.audios.timers) clearTimeout(t);
+    app.audios.timers.clear();
+    assert.equal((await metaPost(echo())).status, 200);
+    const job = app.store.state.audios.fila['wamid.ECO1'];
+    for (const t of app.audios.timers) clearTimeout(t);
+    app.audios.timers.clear();
+    await app.audios.run({ key: 'wamid.ECO1', m: job, attempts: 0 });
+    assert.equal(transcribeCalls.length, 0);
+    assert.equal(revvyWrites.filter((w) => w.path.endsWith('/notes')).length, 0);
+    assert.deepEqual([app.store.state.audios.log[0].resultado, app.store.state.audios.log[0].detalhe], ['ignorado', 'card na etapa Recepção']);
+    // card em outra etapa: transcreve
+    deals.dl.column = { id: 'col-atend', name: 'Em Atendimento' };
+    assert.equal(await app.audios.ignoredStage('c-laura'), null);
+  } finally { await stopApp(); }
+});

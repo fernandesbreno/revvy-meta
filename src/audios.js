@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { agoraBr } from './store.js';
+import { normalize } from './config.js';
 
 /**
  * Transcreve os áudios que a equipe manda no WhatsApp e grava o texto como nota interna da conversa.
@@ -22,6 +23,7 @@ const prefixed = (paths) => paths.flatMap((p) => [p, `data.${p}`, `payload.${p}`
 const EVENT = ['event', 'type', 'event_type', 'action', 'evento', 'data.event'];
 const MESSAGE_ID = prefixed(['message_id', 'messageId', 'wa_message_id']).concat(['message.id', 'data.message.id', 'payload.message.id', 'data.id', 'id']);
 const CONVERSATION_ID = prefixed(['conversation_id', 'conversationId', 'conversation.id', 'chat_id']);
+const CONTACT_ID = prefixed(['contact_id', 'contactId', 'contact.id']);
 const FROM_ME = prefixed(['from_me', 'fromMe', 'is_from_me', 'outgoing', 'direction', 'sender_type']);
 const TYPE = prefixed(['message_type', 'messageType', 'media_type', 'mediaType', 'type', 'mimetype', 'mime_type']);
 const MEDIA_URL = prefixed(['media_url', 'mediaUrl', 'file_url', 'fileUrl', 'audio_url', 'audioUrl', 'url', 'media.url', 'audio.url', 'file.url', 'attachment.url', 'attachments.0.url', 'media.link', 'audio.link']);
@@ -55,6 +57,7 @@ export function parseMessageWebhook(body) {
     evento,
     messageId: first(body, MESSAGE_ID) ? String(first(body, MESSAGE_ID)) : null,
     conversationId: first(body, CONVERSATION_ID) ? String(first(body, CONVERSATION_ID)) : null,
+    contactId: first(body, CONTACT_ID) ? String(first(body, CONTACT_ID)) : null,
     // "Nova mensagem enviada" é sempre da empresa, mesmo quando o payload não diz from_me
     fromMe: fromMeRaw !== undefined ? truthyFromMe(fromMeRaw) : /sent|enviad|outgoing/i.test(evento),
     isAudio: /audio|ptt|voice|ogg|opus/i.test(`${tipo} ${mime || ''}`),
@@ -200,7 +203,7 @@ export class AudioTranscriber {
     const convs = (full.conversations || []).filter((c) => !c.channel || c.channel === 'whatsapp');
     convs.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
     if (!convs[0]) throw new Error(`contato ${contact.id} sem conversa de WhatsApp no Revvy`);
-    return convs[0].id;
+    return { conversationId: convs[0].id, contactId: contact.id };
   }
 
   schedule(job, delayMs) {
@@ -211,7 +214,18 @@ export class AudioTranscriber {
   async run(job) {
     const { key, m } = job;
     try {
-      if (!m.conversationId) m.conversationId = await this.conversationByPhone(m.phone);
+      if (!m.conversationId) {
+        const found = await this.conversationByPhone(m.phone);
+        m.conversationId = found.conversationId;
+        m.contactId ||= found.contactId;
+      }
+      const etapa = await this.ignoredStage(m.contactId);
+      if (etapa) {
+        delete this.st.fila[key];
+        this.st.feitos[key] = Math.floor(Date.now() / 1000);
+        this.log({ resultado: 'ignorado', conversa: m.conversationId, detalhe: `card na etapa ${etapa}` });
+        return;
+      }
       const audio = await this.download(m);
       const texto = (await this.transcribe(audio, m.mime)).trim();
       const quem = m.senderName ? ` de ${m.senderName}` : '';
@@ -237,6 +251,28 @@ export class AudioTranscriber {
         this.logger.warn(`[áudio] tentando de novo em ${delay} s: ${err.message}`);
         this.schedule(job, delay * 1000);
       }
+    }
+  }
+
+  /** Nome da etapa do card mais recente do contato, se ela está em AUDIOS_IGNORAR_ETAPAS (ex.: Recepção). */
+  async ignoredStage(contactId) {
+    const ignorar = this.cfg.ignorarEtapas.map(normalize);
+    if (!ignorar.length || !contactId) return null;
+    try {
+      const r = await this.revvy.request(`/api/v1/deals?contact_id=${encodeURIComponent(contactId)}&limit=50`);
+      const list = (r.data || r.deals || []).filter((d) => (d.contact_id ?? d.contact?.id ?? contactId) === contactId);
+      if (!list.length) return null;
+      list.sort((a, b) => String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')));
+      let nome = list[0].column?.name || list[0].column_name;
+      if (!nome && list[0].column_id) {
+        this.colunas ||= (await this.revvy.request('/api/v1/columns')).pipelines?.flatMap((p) => p.columns || []) || [];
+        nome = this.colunas.find((c) => c.id === list[0].column_id)?.name;
+      }
+      return nome && ignorar.includes(normalize(nome)) ? nome : null;
+    } catch (err) {
+      // na dúvida, transcreve
+      this.logger.warn(`[áudio] não consegui ver a etapa do contato ${contactId}: ${err.message}`);
+      return null;
     }
   }
 
