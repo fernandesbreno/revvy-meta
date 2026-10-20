@@ -117,6 +117,7 @@ O Revvy transcreve os áudios do cliente, mas não os que a atendente manda. Com
 | `OPENAI_API_KEY` | — | Chave do serviço de transcrição |
 | `REVVY_WEBHOOK_SECRET_MENSAGENS` | — | Secret do webhook de mensagens, quando é diferente do `REVVY_WEBHOOK_SECRET` |
 | `TRANSCRICAO_MODELO` | `gpt-4o-mini-transcribe` | Modelo de transcrição (`whisper-1` também serve) |
+| `AUDIOS_IGNORAR_ETAPAS` | `Recepção` | Etapas (separadas por vírgula) em que o card do cliente faz o áudio da equipe não ser transcrito. Vazio transcreve todos |
 | `TRANSCRICAO_API_URL` | `https://api.openai.com/v1` | Outro serviço compatível com a API da OpenAI |
 | `TRANSCRICAO_AUTOR_DA_NOTA` | `true` | `false` grava a nota no nome do administrador em vez de quem mandou o áudio |
 

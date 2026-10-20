@@ -96,6 +96,8 @@ export function loadConfig(env = process.env) {
       verifyToken: String(env.WHATSAPP_VERIFY_TOKEN || '').trim(),
       graphUrl: (env.META_GRAPH_URL || 'https://graph.facebook.com').replace(/\/$/, ''),
       graphVersion: env.META_GRAPH_VERSION || 'v24.0',
+      // áudios de clientes com o card nessas etapas não são transcritos (vazio = transcreve todos)
+      ignorarEtapas: String(env.AUDIOS_IGNORAR_ETAPAS ?? 'Recepção').split(',').map((e) => e.trim()).filter(Boolean),
     },
     recepcao: {
       // mensagem de confirmação da sessão enviada pela equipe → card do cliente vai para a Recepção
