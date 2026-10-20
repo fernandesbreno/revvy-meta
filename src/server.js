@@ -7,7 +7,7 @@ import { Processor } from './processor.js';
 import { reconcile } from './reconcile.js';
 import { LeadsImporter } from './leads.js';
 import { Distributor } from './distribuidor.js';
-import { AudioTranscriber, isMessageWebhook } from './audios.js';
+import { AudioTranscriber, isMessageWebhook, parseEchoes, verifyMetaSignature } from './audios.js';
 
 export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
   const store = new Store(cfg.dataDir);
@@ -66,6 +66,32 @@ export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
         ultimos: st.log.slice(0, 50),
         ultimos_webhooks: st.amostras,
       });
+    }
+
+    // Webhook da Meta para os ecos do WhatsApp (áudios que a equipe manda pelo celular)
+    if (req.method === 'GET' && url.pathname === '/webhooks/whatsapp') {
+      const ok = cfg.audios.verifyToken && url.searchParams.get('hub.mode') === 'subscribe' && url.searchParams.get('hub.verify_token') === cfg.audios.verifyToken;
+      if (!ok) return json(res, 403, { erro: 'verify token inválido' });
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      return res.end(url.searchParams.get('hub.challenge') || '');
+    }
+
+    if (req.method === 'POST' && url.pathname === '/webhooks/whatsapp') {
+      const chunks = [];
+      req.on('data', (c) => chunks.push(c));
+      req.on('end', () => {
+        const raw = Buffer.concat(chunks);
+        if (!cfg.audios.appSecret || !verifyMetaSignature({ appSecret: cfg.audios.appSecret, signature: req.headers['x-hub-signature-256'], rawBody: raw })) {
+          logger.warn('[whatsapp] webhook recusado: assinatura inválida ou META_APP_SECRET vazio');
+          return json(res, 401, { erro: 'assinatura inválida' });
+        }
+        let body;
+        try { body = JSON.parse(raw.toString('utf8') || '{}'); } catch { return json(res, 400, { erro: 'JSON inválido' }); }
+        const ecos = parseEchoes(body);
+        for (const m of ecos) audios.handleEcho(m);
+        return json(res, 200, { ok: true, audios: ecos.length });
+      });
+      return;
     }
 
     if (req.method === 'POST' && url.pathname === '/webhooks/revvy') {

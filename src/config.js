@@ -90,6 +90,12 @@ export function loadConfig(env = process.env) {
       modelo: env.TRANSCRICAO_MODELO || 'gpt-4o-mini-transcribe',
       // grava a nota no nome de quem mandou o áudio, quando o webhook diz quem foi
       autorDaNota: env.TRANSCRICAO_AUTOR_DA_NOTA !== 'false',
+      // áudios mandados pelo celular chegam pelo webhook da Meta (/webhooks/whatsapp)
+      whatsappToken: String(env.WHATSAPP_TOKEN || env.META_ACCESS_TOKEN || '').trim(),
+      appSecret: String(env.META_APP_SECRET || '').trim(),
+      verifyToken: String(env.WHATSAPP_VERIFY_TOKEN || '').trim(),
+      graphUrl: (env.META_GRAPH_URL || 'https://graph.facebook.com').replace(/\/$/, ''),
+      graphVersion: env.META_GRAPH_VERSION || 'v24.0',
     },
     fillSkippedStages: env.PREENCHER_ETAPAS_PULADAS !== 'false',
     stages: loadStages(env),
