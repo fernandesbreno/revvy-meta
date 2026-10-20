@@ -1,6 +1,6 @@
 import http from 'node:http';
 import { loadConfig } from './config.js';
-import { Store } from './store.js';
+import { Store, agoraBr } from './store.js';
 import { RevvyClient, parseWebhook, verifySignature } from './revvy.js';
 import { MetaClient } from './meta.js';
 import { Processor } from './processor.js';
@@ -72,6 +72,7 @@ export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
         modelo: cfg.audios.modelo,
         transcritos_total: Object.values(st.feitos).filter((v) => typeof v === 'number').length,
         ultimos: st.log.slice(0, 50),
+        avisos_da_meta: st.avisos_meta || [],
         ultimos_webhooks: st.amostras,
       });
     }
@@ -97,11 +98,19 @@ export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
         const raw = Buffer.concat(chunks);
         if (!cfg.audios.appSecret || !verifyMetaSignature({ appSecret: cfg.audios.appSecret, signature: req.headers['x-hub-signature-256'], rawBody: raw })) {
           logger.warn('[whatsapp] webhook recusado: assinatura inválida ou META_APP_SECRET vazio');
+          audios.st.avisos_meta = [{ em: agoraBr(), recusado: 'assinatura inválida: confira o META_APP_SECRET' }, ...(audios.st.avisos_meta || [])].slice(0, 20);
+          store.save();
           return json(res, 401, { erro: 'assinatura inválida' });
         }
         let body;
         try { body = JSON.parse(raw.toString('utf8') || '{}'); } catch { return json(res, 400, { erro: 'JSON inválido' }); }
         const ecos = parseEchoes(body);
+        // registra todo aviso da Meta (mesmo sem áudio), para saber se ela está chamando o app
+        const campos = (body.entry || []).flatMap((e) => (e.changes || []).map((c) => c.field)).join(',');
+        const st = audios.st;
+        st.avisos_meta = [{ em: agoraBr(), campos, audios: ecos.length }, ...(st.avisos_meta || [])].slice(0, 20);
+        store.save();
+        logger.log(`[whatsapp] aviso da Meta: ${campos || 'sem campo'} (${ecos.length} áudio(s))`);
         for (const m of ecos) audios.handleEcho(m);
         // um instante para o Revvy registrar a mensagem e o contato
         for (const m of parseEchoTexts(body)) recepcao.handle(m, 3_000);
