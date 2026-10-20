@@ -626,7 +626,27 @@ test('áudio do cliente e transcrição desligada: nada é enviado, mas o webhoo
     assert.equal(revvyWrites.length, 0);
     const st = await (await fetch(appUrl + '/audios?token=adm')).json();
     assert.equal(st.ligado, false);
-    assert.equal(st.ultimos_webhooks.length, 2);
+    assert.equal(st.ultimos_webhooks.length, 1); // o áudio do cliente não fica nos exemplos
     assert.equal((await fetch(appUrl + '/audios')).status, 401);
   } finally { await stopApp(); }
+});
+
+test('áudio na fila quando o app reinicia é transcrito depois do Deploy', async () => {
+  const env = { TRANSCREVER_AUDIOS_EQUIPE: 'true', OPENAI_API_KEY: 'sk-teste', TRANSCRICAO_API_URL: mockUrl + '/openai' };
+  dir = mkdtempSync(path.join(os.tmpdir(), 'rm-'));
+  const { Store } = await import('../src/store.js');
+  const store = new Store(dir);
+  store.state.audios = { feitos: {}, amostras: [], log: [], fila: { 'msg-9': { messageId: 'msg-9', conversationId: 'conv-9', fromMe: true, isAudio: true, mediaUrl: mockUrl + '/midia/audio.ogg', at: null } } };
+  store.save();
+  const keep = dir;
+  const cfg = loadConfig({ REVVY_API_KEY: 'chave-revvy', REVVY_WEBHOOK_SECRET: SECRET, META_DATASET_ID: '111', META_ACCESS_TOKEN: 'tok', REVVY_BASE_URL: mockUrl, META_GRAPH_URL: mockUrl + '/graph', DATA_DIR: keep, PORT: '0', RECONCILIAR_A_CADA_MINUTOS: '0', ADMIN_TOKEN: 'adm', ...env });
+  const { AudioTranscriber } = await import('../src/audios.js');
+  const { RevvyClient } = await import('../src/revvy.js');
+  const t = new AudioTranscriber({ cfg, store, revvy: new RevvyClient(cfg.revvy), logger: quiet });
+  t.stop();
+  await t.run({ key: 'msg-9', m: store.state.audios.fila['msg-9'], attempts: 0 });
+  assert.equal(revvyWrites.filter((w) => w.path === '/api/v1/conversations/conv-9/notes').length, 1);
+  assert.equal(store.state.audios.fila['msg-9'], undefined);
+  assert.equal(typeof store.state.audios.feitos['msg-9'], 'number');
+  rmSync(keep, { recursive: true, force: true });
 });
