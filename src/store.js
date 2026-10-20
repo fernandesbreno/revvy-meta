@@ -8,6 +8,11 @@ import path from 'node:path';
  *  - log: últimos 200 resultados, sem dados pessoais
  *  - leads: ids dos leads de formulário já importados e até quando já foi lido
  */
+/** Data e hora de Brasília/Fortaleza (UTC-3, sem horário de verão), ex.: "2026-10-20 13:42:40". */
+export function agoraBr(now = Date.now()) {
+  return new Date(now - 3 * 3600_000).toISOString().slice(0, 19).replace('T', ' ');
+}
+
 export class Store {
   constructor(dir) {
     mkdirSync(dir, { recursive: true });
@@ -57,7 +62,7 @@ export class Store {
   }
 
   log(entry) {
-    this.state.log.unshift({ em: new Date().toISOString(), ...entry });
+    this.state.log.unshift({ em: agoraBr(), ...entry });
     this.state.log.length = Math.min(this.state.log.length, 200);
     this.save();
   }
