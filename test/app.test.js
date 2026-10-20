@@ -12,6 +12,7 @@ import { reconcile } from '../src/reconcile.js';
 import { leadContact } from '../src/leads.js';
 import { revvyTime, parseAttendants, parseHours, isOpen } from '../src/distribuidor.js';
 import { hashedUserData } from '../src/meta.js';
+import { parseMessageWebhook, isMessageWebhook } from '../src/audios.js';
 
 const SECRET = 'segredo-teste';
 const sha = (v) => crypto.createHash('sha256').update(v).digest('hex');
@@ -26,6 +27,7 @@ let contacts = {};
 let histories = {};
 let formLeads = [];
 let revvyWrites = [];
+let transcribeCalls = [];
 let mock;
 let mockUrl;
 
@@ -48,7 +50,13 @@ before(async () => {
         if (u.pathname.startsWith('/api/v1/contacts/')) return send(200, { success: true });
         if (u.pathname === '/api/v1/deals/create') return send(200, { success: true, deal: { id: 'deal-novo' } });
         if (u.pathname === '/api/v1/conversations/transfer') return send(200, { success: true });
+        if (/^\/api\/v1\/conversations\/[^/]+\/notes$/.test(u.pathname)) return send(200, { success: true });
         if (u.pathname.startsWith('/api/v1/deals/')) return send(200, { success: true });
+      }
+      if (u.pathname === '/midia/audio.ogg') { res.writeHead(200, { 'content-type': 'audio/ogg' }); return res.end(Buffer.from('OggS-audio-falso')); }
+      if (u.pathname === '/openai/audio/transcriptions') {
+        transcribeCalls.push({ auth: req.headers.authorization, body });
+        return send(200, { text: 'Oi amiga, a sessão de axila dura uns 5 minutinhos.' });
       }
       let m;
       if ((m = u.pathname.match(/^\/api\/v1\/deals\/([^/]+)\/stage-history$/))) return send(200, { success: true, data: { history: histories[m[1]] || [] } });
@@ -108,7 +116,7 @@ beforeEach(() => {
   deals = { d1: { id: 'd1', value: 2500, created_at: ago(120), contact: { id: 'c1', name: 'João da Silva', phone: '5511999999999', email: 'Joao@Exemplo.com' }, column: { name: 'Venda Concluída' } } };
   contacts = { c1: { id: 'c1', name: 'João da Silva', phone: '5511999999999', email: 'Joao@Exemplo.com', city: 'São Paulo', custom_fields: { meta_lead_id: '1234567890123456' } } };
   histories = {};
-  formLeads = []; revvyWrites = [];
+  formLeads = []; revvyWrites = []; transcribeCalls = [];
 });
 
 test('assinatura: aceita a correta, recusa errada e antiga', () => {
@@ -576,5 +584,49 @@ test('reenviar: só com token e confirmação, e esquece o que já foi enviado',
     assert.equal(r.esquecidos, 1);
     assert.equal(r.conjunto, '111');
     assert.equal(app.store.wasSent('d1:venda_concluida'), false);
+  } finally { await stopApp(); }
+});
+
+test('parseMessageWebhook entende o webhook de mensagem enviada', () => {
+  const m = parseMessageWebhook({ event: 'message.sent', data: { id: 'm1', conversation_id: 'conv1', from_me: true, message_type: 'audio', media_url: 'https://x/a.ogg', sender_name: 'Ana' } });
+  assert.deepEqual([m.messageId, m.conversationId, m.fromMe, m.isAudio, m.mediaUrl, m.senderName], ['m1', 'conv1', true, true, 'https://x/a.ogg', 'Ana']);
+  assert.equal(parseMessageWebhook({ event: 'message.received', data: { conversation_id: 'c', from_me: false, type: 'audio' } }).fromMe, false);
+  assert.equal(isMessageWebhook({ event: 'card_moved', data: { deal_id: 'd' } }), false);
+  assert.equal(isMessageWebhook({ event: 'message.sent', data: { id: 'm' } }), true);
+});
+
+test('áudio da equipe: baixa, transcreve e grava nota na conversa, uma vez só; não vira negócio', async () => {
+  await startApp({ TRANSCREVER_AUDIOS_EQUIPE: 'true', OPENAI_API_KEY: 'sk-teste', TRANSCRICAO_API_URL: mockUrl + '/openai' });
+  try {
+    const payload = { event: 'message.sent', data: { id: 'msg-1', conversation_id: 'conv-1', from_me: true, message_type: 'audio', media_url: mockUrl + '/midia/audio.ogg', user_id: 'u-ana', sender_name: 'Ana', created_at: '2026-10-20 12:25:56.66-03' } };
+    assert.equal((await signedPost(payload)).status, 200);
+    for (let i = 0; i < 50 && !revvyWrites.length; i++) await new Promise((r) => setTimeout(r, 20));
+    await signedPost(payload); // repetido: não transcreve de novo
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(transcribeCalls.length, 1);
+    assert.equal(transcribeCalls[0].auth, 'Bearer sk-teste');
+    const notes = revvyWrites.filter((w) => w.path === '/api/v1/conversations/conv-1/notes');
+    assert.equal(notes.length, 1);
+    assert.match(notes[0].body.note, /^🎙️ Transcrição do áudio de Ana \(12:25\):\nOi amiga/);
+    assert.equal(notes[0].body.note_user_id, 'u-ana');
+    assert.equal(app.store.state.pending.length, 0);
+    const st = await (await fetch(appUrl + '/audios?token=adm')).json();
+    assert.equal(st.transcritos_total, 1);
+    assert.equal(st.ultimos_webhooks.length, 2);
+  } finally { await stopApp(); }
+});
+
+test('áudio do cliente e transcrição desligada: nada é enviado, mas o webhook fica registrado', async () => {
+  await startApp({ REVVY_WEBHOOK_SECRET_MENSAGENS: 'outro-secret' });
+  try {
+    await signedPost({ event: 'message.received', data: { id: 'm2', conversation_id: 'c2', from_me: false, message_type: 'audio', media_url: mockUrl + '/midia/audio.ogg' } }, 'outro-secret');
+    const r = await signedPost({ event: 'message.sent', data: { id: 'm3', conversation_id: 'c3', from_me: true, message_type: 'audio', media_url: mockUrl + '/midia/audio.ogg' } });
+    assert.equal((await r.json()).ignorado, 'desligado');
+    assert.equal(transcribeCalls.length, 0);
+    assert.equal(revvyWrites.length, 0);
+    const st = await (await fetch(appUrl + '/audios?token=adm')).json();
+    assert.equal(st.ligado, false);
+    assert.equal(st.ultimos_webhooks.length, 2);
+    assert.equal((await fetch(appUrl + '/audios')).status, 401);
   } finally { await stopApp(); }
 });

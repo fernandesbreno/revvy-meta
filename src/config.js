@@ -29,6 +29,8 @@ export function loadConfig(env = process.env) {
       baseUrl: (env.REVVY_BASE_URL || 'https://revvy.uni6.net').replace(/\/$/, ''),
       apiKey: String(env.REVVY_API_KEY).trim(),
       webhookSecret: env.REVVY_WEBHOOK_SECRET,
+      // o webhook de mensagens pode ser outro, com secret próprio
+      extraSecrets: [env.REVVY_WEBHOOK_SECRET_MENSAGENS].filter(Boolean),
       validateSignature: env.VALIDAR_ASSINATURA !== 'false',
     },
     meta: {
@@ -80,6 +82,14 @@ export function loadConfig(env = process.env) {
       ignorarEtiquetas: String(env.DISTRIBUIR_IGNORAR_ETIQUETAS ?? 'Pago').split(',').map((t) => t.trim()).filter(Boolean),
       horario: parseHours(env.DISTRIBUIR_HORARIO),
       horarioTexto: env.DISTRIBUIR_HORARIO || '24 horas',
+    },
+    audios: {
+      ligado: env.TRANSCREVER_AUDIOS_EQUIPE === 'true',
+      apiKey: String(env.OPENAI_API_KEY || '').trim(),
+      apiUrl: (env.TRANSCRICAO_API_URL || 'https://api.openai.com/v1').replace(/\/$/, ''),
+      modelo: env.TRANSCRICAO_MODELO || 'gpt-4o-mini-transcribe',
+      // grava a nota no nome de quem mandou o áudio, quando o webhook diz quem foi
+      autorDaNota: env.TRANSCRICAO_AUTOR_DA_NOTA !== 'false',
     },
     fillSkippedStages: env.PREENCHER_ETAPAS_PULADAS !== 'false',
     stages: loadStages(env),

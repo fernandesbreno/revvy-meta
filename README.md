@@ -98,6 +98,28 @@ A saudação com o nome de cada atendente sai do Revvy, de um workflow por atend
 
 O `/status` mostra quantos leads cada uma recebeu e quem é a próxima.
 
+## Transcrição dos áudios da equipe
+O Revvy transcreve os áudios do cliente, mas não os que a atendente manda. Com isto ligado, cada áudio enviado pela equipe é transcrito e vira uma **nota interna da conversa** (aparece no inbox só para a equipe e no histórico do contato), no nome de quem mandou o áudio.
+
+1. No Easypanel, acrescente em **Environment** e clique em **Deploy**:
+   ```
+   TRANSCREVER_AUDIOS_EQUIPE=true
+   OPENAI_API_KEY=
+   ```
+   A chave sai de platform.openai.com → API keys (precisa de crédito na conta; o modelo padrão custa por volta de US$ 0,003 por minuto de áudio).
+2. Em Revvy → Configurações → Integrações → Webhooks, crie um webhook com a URL `https://SEU-DOMINIO/webhooks/revvy`, marque só **Nova mensagem enviada** e salve.
+3. Copie o *secret* desse webhook para `REVVY_WEBHOOK_SECRET_MENSAGENS` (se for o mesmo do outro webhook, não precisa) e clique em **Deploy**.
+4. Mande um áudio de teste e abra `https://SEU-DOMINIO/audios?token=SEU_ADMIN_TOKEN`: mostra os áudios transcritos, os erros e os últimos webhooks de mensagem que chegaram.
+
+| Variável | Padrão | Para que serve |
+|---|---|---|
+| `TRANSCREVER_AUDIOS_EQUIPE` | `false` | Liga a transcrição |
+| `OPENAI_API_KEY` | — | Chave do serviço de transcrição |
+| `REVVY_WEBHOOK_SECRET_MENSAGENS` | — | Secret do webhook de mensagens, quando é diferente do `REVVY_WEBHOOK_SECRET` |
+| `TRANSCRICAO_MODELO` | `gpt-4o-mini-transcribe` | Modelo de transcrição (`whisper-1` também serve) |
+| `TRANSCRICAO_API_URL` | `https://api.openai.com/v1` | Outro serviço compatível com a API da OpenAI |
+| `TRANSCRICAO_AUTOR_DA_NOTA` | `true` | `false` grava a nota no nome do administrador em vez de quem mandou o áudio |
+
 ## Etapas do funil
 O arquivo [`etapas.json`](etapas.json) liga o nome de cada coluna do kanban ao evento da Meta. Para mudar, edite o arquivo aqui no GitHub e clique em **Deploy** no Easypanel. Maiúsculas e acentos não importam.
 
