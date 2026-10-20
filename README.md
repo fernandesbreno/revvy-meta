@@ -57,6 +57,7 @@ Proteções:
 1. Com `META_TEST_EVENT_CODE` preenchido, mova um card de teste no Revvy.
 2. Veja o evento na aba **Testar eventos** da Meta.
 3. Confira também `https://SEU-DOMINIO/status?token=SEU_ADMIN_TOKEN`: mostra os últimos envios, o que foi ignorado e por quê (sem dados pessoais).
+4. Trocou o `META_DATASET_ID`? Abra `https://SEU-DOMINIO/reenviar?token=SEU_ADMIN_TOKEN&confirmar=sim` uma vez depois do Implantar: o app esquece o que já tinha enviado e manda de novo ao conjunto novo tudo dos últimos 7 dias (o limite da Meta).
 4. Funcionou? Apague `META_TEST_EVENT_CODE` e clique em **Deploy**. A partir daí vai para produção.
 
 ## Leads dos formulários da Meta → Revvy

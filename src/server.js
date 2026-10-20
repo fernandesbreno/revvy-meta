@@ -39,6 +39,20 @@ export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
       });
     }
 
+    // Depois de trocar o conjunto de dados: esquece o que já foi enviado e manda de novo os últimos 7 dias
+    if (req.method === 'GET' && url.pathname === '/reenviar') {
+      if (!cfg.adminToken || url.searchParams.get('token') !== cfg.adminToken) return json(res, 401, { erro: 'token inválido' });
+      if (url.searchParams.get('confirmar') !== 'sim') {
+        return json(res, 400, { erro: 'acrescente &confirmar=sim: isso reenvia ao conjunto de dados atual tudo dos últimos 7 dias' });
+      }
+      const esquecidos = Object.keys(store.state.sent).length;
+      store.state.sent = {};
+      store.log({ resultado: 'reenvio', detalhe: `${esquecidos} envios esquecidos; reenviando os últimos 7 dias ao conjunto ${cfg.meta.datasetId}` });
+      store.save();
+      runReconcile();
+      return json(res, 200, { ok: true, esquecidos, conjunto: cfg.meta.datasetId, detalhe: 'reenvio começou; acompanhe em /status' });
+    }
+
     if (req.method === 'POST' && url.pathname === '/webhooks/revvy') {
       const chunks = [];
       req.on('data', (c) => chunks.push(c));

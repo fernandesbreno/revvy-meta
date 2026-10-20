@@ -564,3 +564,17 @@ test('estado vem do DDD quando o contato não tem estado no Revvy', () => {
   assert.deepEqual(hashedUserData({ phone: '5586988828131', state: 'CE' }).st, [h('ce')]);
   assert.equal(hashedUserData({ phone: 'instagram:123' }).st, undefined);
 });
+
+test('reenviar: só com token e confirmação, e esquece o que já foi enviado', async () => {
+  await startApp();
+  try {
+    app.store.markSent('d1:venda_concluida');
+    assert.equal((await fetch(appUrl + '/reenviar?token=errado&confirmar=sim')).status, 401);
+    assert.equal((await fetch(appUrl + '/reenviar?token=adm')).status, 400);
+    assert.equal(app.store.wasSent('d1:venda_concluida'), true);
+    const r = await (await fetch(appUrl + '/reenviar?token=adm&confirmar=sim')).json();
+    assert.equal(r.esquecidos, 1);
+    assert.equal(r.conjunto, '111');
+    assert.equal(app.store.wasSent('d1:venda_concluida'), false);
+  } finally { await stopApp(); }
+});
