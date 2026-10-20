@@ -13,6 +13,7 @@ import { leadContact } from '../src/leads.js';
 import { revvyTime, parseAttendants, parseHours, isOpen } from '../src/distribuidor.js';
 import { hashedUserData } from '../src/meta.js';
 import { parseMessageWebhook, isMessageWebhook, parseEchoes } from '../src/audios.js';
+import { isConfirmation, parseEchoTexts } from '../src/recepcao.js';
 
 const SECRET = 'segredo-teste';
 const sha = (v) => crypto.createHash('sha256').update(v).digest('hex');
@@ -71,9 +72,12 @@ before(async () => {
       let m;
       if ((m = u.pathname.match(/^\/api\/v1\/deals\/([^/]+)\/stage-history$/))) return send(200, { success: true, data: { history: histories[m[1]] || [] } });
       if ((m = u.pathname.match(/^\/api\/v1\/deals\/([^/]+)$/))) return deals[m[1]] ? send(200, { success: true, data: deals[m[1]] }) : send(404, {});
-      if (u.pathname === '/api/v1/tags') return send(200, { success: true, data: [{ id: 't-ana', name: 'Ana' }, { id: 't-eli', name: 'Eli' }, { id: 't-ruana', name: 'Ruana' }, { id: 't-abordado', name: 'Abordado' }] });
-      if (u.pathname === '/api/v1/columns') return send(200, { success: true, pipelines: [{ id: 'p1', name: 'Comercial', columns: [{ id: 'col-vendido', name: 'Venda Concluída' }, { id: 'col-novo', name: 'Novo Lead' }, { id: 'col-atend', name: 'Em Atendimento' }] }], count: 1 });
-      if (u.pathname === '/api/v1/deals') return send(200, { success: true, data: Object.values(deals), pagination: { has_more: false } });
+      if (u.pathname === '/api/v1/tags') return send(200, { success: true, data: [{ id: 't-ana', name: 'Ana' }, { id: 't-eli', name: 'Eli' }, { id: 't-ruana', name: 'Ruana' }, { id: 't-abordado', name: 'Abordado' }, { id: 't-recep', name: 'Cliente - Recepção' }] });
+      if (u.pathname === '/api/v1/columns') return send(200, { success: true, pipelines: [{ id: 'p1', name: 'Comercial', columns: [{ id: 'col-vendido', name: 'Venda Concluída' }, { id: 'col-novo', name: 'Novo Lead' }, { id: 'col-atend', name: 'Em Atendimento' }, { id: 'col-recep', name: 'Recepção' }] }], count: 1 });
+      if (u.pathname === '/api/v1/deals') {
+        const cid = u.searchParams.get('contact_id');
+        return send(200, { success: true, data: Object.values(deals).filter((d) => !cid || d.contact?.id === cid), pagination: { has_more: false } });
+      }
       if ((m = u.pathname.match(/^\/api\/v1\/contacts\/([^/]+)$/))) return contacts[m[1]] ? send(200, { success: true, data: contacts[m[1]] }) : send(404, {});
       if (req.method === 'GET' && u.pathname.startsWith('/graph/')) {
         if (u.searchParams.get('fields') === 'access_token') return send(200, { access_token: 'tok-pagina', id: '555' });
@@ -710,5 +714,54 @@ test('política de privacidade é pública e usa o nome da empresa', async () =>
     const html = await r.text();
     assert.match(html, /Ice Laser Teresina/);
     assert.match(html, /contato@exemplo.com/);
+  } finally { await stopApp(); }
+});
+
+const CONFIRMACAO = `Olá, tudo bem? 🥰
+Passando para confirmar sua sessão do dia 21/10/2026 (QUARTA-FEIRA ) às 18:10h.
+
+🚫 É necessário vir com a área higienizada e depilada na lâmina, de preferência um dia antes.
+Atenciosamente: Equipe Ice Laser`;
+
+test('confirmação de sessão: reconhece a mensagem com qualquer data e horário', () => {
+  const frases = ['confirmar sua sessao'];
+  assert.equal(isConfirmation(CONFIRMACAO, frases), true);
+  assert.equal(isConfirmation(CONFIRMACAO.replace('21/10/2026 (QUARTA-FEIRA ) às 18:10h', '03/11/2026 (SEGUNDA-FEIRA) às 09:00h'), frases), true);
+  assert.equal(isConfirmation('Oi! Quer agendar sua sessão?', frases), false);
+  assert.deepEqual(parseEchoTexts(echo()).map((m) => m.text), ['oi']);
+});
+
+test('confirmação de sessão pelo celular: card do cliente vai para a Recepção com a etiqueta', async () => {
+  deals.dl = { id: 'dl', created_at: ago(60), contact: { id: 'c-laura' }, column: { id: 'col-atend', name: 'Em Atendimento' } };
+  await startApp({ CONFIRMACAO_RECEPCAO: 'true', META_APP_SECRET: 'segredo-app' });
+  try {
+    const body = { object: 'whatsapp_business_account', entry: [{ id: 'waba', changes: [{ field: 'smb_message_echoes', value: { message_echoes: [
+      { from: '558688828131', to: '558694498854', id: 'wamid.CONF', timestamp: '1792430955', type: 'text', text: { body: CONFIRMACAO } },
+    ] } }] }] };
+    assert.equal((await metaPost(body)).status, 200);
+    for (const t of app.recepcao.timers) clearTimeout(t);
+    app.recepcao.timers.clear();
+    await app.recepcao.run({ key: 'wamid.CONF', m: parseEchoTexts(body)[0], attempts: 0 });
+    const move = revvyWrites.find((w) => w.path === '/api/v1/deals/move');
+    assert.deepEqual(move.body, { deal_id: 'dl', column_id: 'col-recep' });
+    const tag = revvyWrites.find((w) => w.path === '/api/v1/contacts/tags');
+    assert.deepEqual(tag.body, { contact_id: 'c-laura', tag_ids: ['t-recep'] });
+    await metaPost(body); // a Meta reenviou: não move de novo
+    assert.equal(app.recepcao.timers.size, 0);
+  } finally { await stopApp(); }
+});
+
+test('confirmação de sessão pelo Revvy: usa o contato do webhook; mensagem do cliente não conta', async () => {
+  deals.dl = { id: 'dl', created_at: ago(60), contact: { id: 'c-laura' }, column: { id: 'col-recep', name: 'Recepção' } };
+  await startApp({ CONFIRMACAO_RECEPCAO: 'true', REVVY_WEBHOOK_SECRET_MENSAGENS: 'segredo-msg' });
+  try {
+    const msg = (from_me, id) => ({ event: 'new_message_sent', data: { message: { id, text: CONFIRMACAO, type: 'text', from_me, wa_message_id: `wamid.${id}` }, conversation: { id: 'conv-laura' }, contact: { id: 'c-laura', phone: '5586994498854' } } });
+    const r1 = await (await signedPost({ ...msg(false, 'x1'), event: 'new_message_received' }, 'segredo-msg')).json();
+    assert.equal(r1.recepcao, undefined);
+    const r2 = await (await signedPost(msg(true, 'x2'), 'segredo-msg')).json();
+    assert.equal(r2.recepcao, true);
+    for (let i = 0; i < 50 && !app.store.state.recepcao.log.length; i++) await new Promise((r) => setTimeout(r, 20));
+    assert.equal(revvyWrites.filter((w) => w.path === '/api/v1/deals/move').length, 0, 'já estava na Recepção');
+    assert.equal(app.store.state.recepcao.log[0].resultado, 'já estava na Recepção');
   } finally { await stopApp(); }
 });

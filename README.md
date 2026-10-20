@@ -161,3 +161,12 @@ Sem dependências externas: Node.js 20+ puro.
 ## Política de privacidade
 
 O app publica uma política de privacidade em `/privacidade` (também `/privacy`), exigida pela Meta para colocar o app em modo Live. O texto usa `EMPRESA_NOME` (padrão "Ice Laser") e, se definido, `PRIVACIDADE_CONTATO` (e-mail ou WhatsApp para pedidos de dados).
+
+## Confirmação de sessão → Recepção
+
+Com `CONFIRMACAO_RECEPCAO=true`, quando a equipe manda a mensagem de confirmação da sessão ("Passando para confirmar sua sessão do dia ..."), o card do cliente vai para a etapa `RECEPCAO_COLUNA` (padrão "Recepção") e o contato ganha a etiqueta `RECEPCAO_ETIQUETA` (padrão "Cliente - Recepção"; vazio para não etiquetar). Se o cliente não tiver card, um é criado na Recepção.
+
+- A mensagem é reconhecida pela frase, não pela data: `CONFIRMACAO_FRASES` (separadas por `|`, sem acento; padrão `confirmar sua sessao|confirmar a sua sessao`).
+- Mandada pela tela do Revvy: chega pelo webhook de mensagens (o mesmo da transcrição de áudios).
+- Mandada pelo celular: chega pelo webhook da Meta em `/webhooks/whatsapp` (campo `smb_message_echoes`, o mesmo dos áudios).
+- O que foi feito fica em `/recepcao?token=ADMIN_TOKEN`.

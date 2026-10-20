@@ -8,6 +8,7 @@ import { reconcile } from './reconcile.js';
 import { LeadsImporter } from './leads.js';
 import { Distributor } from './distribuidor.js';
 import { privacyPage } from './privacidade.js';
+import { ConfirmacaoRecepcao, parseEchoTexts, parseRevvyText } from './recepcao.js';
 import { AudioTranscriber, isMessageWebhook, parseEchoes, verifyMetaSignature } from './audios.js';
 
 export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
@@ -18,6 +19,7 @@ export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
   const leads = cfg.leads.pageId ? new LeadsImporter({ cfg, store, revvy, fetchImpl, logger }) : null;
   const distributor = cfg.distribuir.atendentes.length ? new Distributor({ cfg, store, revvy, logger }) : null;
   const audios = new AudioTranscriber({ cfg, store, revvy, fetchImpl, logger });
+  const recepcao = new ConfirmacaoRecepcao({ cfg, store, revvy, logger });
 
   const json = (res, status, obj) => {
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -74,6 +76,12 @@ export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
       });
     }
 
+    // Confirmações de sessão que moveram o card para a Recepção
+    if (req.method === 'GET' && url.pathname === '/recepcao') {
+      if (!cfg.adminToken || url.searchParams.get('token') !== cfg.adminToken) return json(res, 401, { erro: 'token inválido' });
+      return json(res, 200, { ligado: recepcao.ligado, frases: recepcao.frases, etapa: cfg.recepcao.coluna, etiqueta: cfg.recepcao.etiqueta, ultimos: recepcao.st.log.slice(0, 50) });
+    }
+
     // Webhook da Meta para os ecos do WhatsApp (áudios que a equipe manda pelo celular)
     if (req.method === 'GET' && url.pathname === '/webhooks/whatsapp') {
       const ok = cfg.audios.verifyToken && url.searchParams.get('hub.mode') === 'subscribe' && url.searchParams.get('hub.verify_token') === cfg.audios.verifyToken;
@@ -95,6 +103,8 @@ export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
         try { body = JSON.parse(raw.toString('utf8') || '{}'); } catch { return json(res, 400, { erro: 'JSON inválido' }); }
         const ecos = parseEchoes(body);
         for (const m of ecos) audios.handleEcho(m);
+        // um instante para o Revvy registrar a mensagem e o contato
+        for (const m of parseEchoTexts(body)) recepcao.handle(m, 3_000);
         return json(res, 200, { ok: true, audios: ecos.length });
       });
       return;
@@ -124,7 +134,10 @@ export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
         let body;
         try { body = JSON.parse(raw.toString('utf8') || '{}'); } catch { return json(res, 400, { erro: 'JSON inválido' }); }
         // mensagens vão para a transcrição de áudios; não podem cair no parseWebhook, que leria o id como negócio
-        if (isMessageWebhook(body)) return json(res, 200, audios.handle(body));
+        if (isMessageWebhook(body)) {
+          const recepcaoAgendada = recepcao.handle(parseRevvyText(body));
+          return json(res, 200, { ...audios.handle(body), ...(recepcaoAgendada ? { recepcao: true } : {}) });
+        }
         const parsed = parseWebhook(body);
         if (!parsed) {
           store.log({ resultado: 'ignorado', detalhe: 'webhook sem negócio', evento: String(body.event || body.type || '') });
@@ -179,9 +192,11 @@ export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
       return new Promise((r) => server.listen(cfg.port, () => r(server)));
     },
     audios,
+    recepcao,
     stop() {
       processor.stop();
       audios.stop();
+      recepcao.stop();
       clearInterval(reconcileTimer);
       clearInterval(leadsTimer);
       clearInterval(distTimer);
@@ -213,5 +228,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   console.log(cfg.audios.ligado && cfg.audios.apiKey
     ? `[áudios] transcrevendo os áudios da equipe com ${cfg.audios.modelo} e gravando como nota da conversa`
     : '[áudios] transcrição desligada (TRANSCREVER_AUDIOS_EQUIPE=true e OPENAI_API_KEY)');
+  console.log(cfg.recepcao.ligado
+    ? `[recepção] mensagem de confirmação da sessão move o card para "${cfg.recepcao.coluna}"`
+    : '[recepção] desligada (CONFIRMACAO_RECEPCAO=true)');
   for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => app.stop().then(() => process.exit(0)));
 }

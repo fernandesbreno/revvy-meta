@@ -97,6 +97,13 @@ export function loadConfig(env = process.env) {
       graphUrl: (env.META_GRAPH_URL || 'https://graph.facebook.com').replace(/\/$/, ''),
       graphVersion: env.META_GRAPH_VERSION || 'v24.0',
     },
+    recepcao: {
+      // mensagem de confirmação da sessão enviada pela equipe → card do cliente vai para a Recepção
+      ligado: env.CONFIRMACAO_RECEPCAO === 'true',
+      frases: String(env.CONFIRMACAO_FRASES ?? 'confirmar sua sessao|confirmar a sua sessao').split('|').map((f) => f.trim()).filter(Boolean),
+      coluna: env.RECEPCAO_COLUNA || 'Recepção',
+      etiqueta: String(env.RECEPCAO_ETIQUETA ?? 'Cliente - Recepção').trim(),
+    },
     privacidade: {
       empresa: env.EMPRESA_NOME || 'Ice Laser',
       contato: env.PRIVACIDADE_CONTATO || '',
