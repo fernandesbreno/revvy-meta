@@ -97,6 +97,10 @@ export function loadConfig(env = process.env) {
       graphUrl: (env.META_GRAPH_URL || 'https://graph.facebook.com').replace(/\/$/, ''),
       graphVersion: env.META_GRAPH_VERSION || 'v24.0',
     },
+    privacidade: {
+      empresa: env.EMPRESA_NOME || 'Ice Laser',
+      contato: env.PRIVACIDADE_CONTATO || '',
+    },
     fillSkippedStages: env.PREENCHER_ETAPAS_PULADAS !== 'false',
     stages: loadStages(env),
   };

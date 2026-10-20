@@ -157,3 +157,7 @@ Para o Instagram, o token precisa da permissão `instagram_manage_events`. Não 
 npm test
 ```
 Sem dependências externas: Node.js 20+ puro.
+
+## Política de privacidade
+
+O app publica uma política de privacidade em `/privacidade` (também `/privacy`), exigida pela Meta para colocar o app em modo Live. O texto usa `EMPRESA_NOME` (padrão "Ice Laser") e, se definido, `PRIVACIDADE_CONTATO` (e-mail ou WhatsApp para pedidos de dados).

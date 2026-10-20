@@ -701,3 +701,14 @@ test('áudio mandado pelo celular: eco da Meta vira nota na conversa do contato,
     assert.equal(transcribeCalls.length, 1);
   } finally { await stopApp(); }
 });
+
+test('política de privacidade é pública e usa o nome da empresa', async () => {
+  await startApp({ EMPRESA_NOME: 'Ice Laser Teresina', PRIVACIDADE_CONTATO: 'contato@exemplo.com' });
+  try {
+    const r = await fetch(appUrl + '/privacidade');
+    assert.equal(r.status, 200);
+    const html = await r.text();
+    assert.match(html, /Ice Laser Teresina/);
+    assert.match(html, /contato@exemplo.com/);
+  } finally { await stopApp(); }
+});
