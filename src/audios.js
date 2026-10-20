@@ -112,6 +112,8 @@ export function parseEchoes(body) {
           fromMe: true,
           isAudio: true,
           mediaId: String(media.id),
+          // link direto que a Meta manda no próprio aviso (vale poucos minutos)
+          metaUrl: typeof media.url === 'string' && /^https:\/\//.test(media.url) ? media.url : null,
           mime: media.mime_type || null,
           at: e.timestamp ? new Date(Number(e.timestamp) * 1000).toISOString() : null,
         });
@@ -240,7 +242,7 @@ export class AudioTranscriber {
 
   async download(m) {
     if (m.base64) return Buffer.from(m.base64, 'base64');
-    if (m.mediaId) return this.downloadFromMeta(m.mediaId);
+    if (m.mediaId) return this.downloadFromMeta(m.mediaId, m.metaUrl);
     // link do próprio Revvy pode exigir a chave da API; links externos (WhatsApp/S3) vão sem ela
     const sameHost = new URL(m.mediaUrl).host === new URL(this.revvyCfg.baseUrl).host;
     const res = await this.fetch(m.mediaUrl, { headers: sameHost ? { Authorization: `Bearer ${this.revvyCfg.apiKey}` } : {} });
@@ -255,12 +257,17 @@ export class AudioTranscriber {
   }
 
   /** Mídia do WhatsApp: pergunta o link à Graph API e baixa com o mesmo token. */
-  async downloadFromMeta(mediaId) {
+  async downloadFromMeta(mediaId, metaUrl) {
     const auth = { Authorization: `Bearer ${this.cfg.whatsappToken}` };
+    if (metaUrl) {
+      const direct = await this.fetch(metaUrl, { headers: auth });
+      if (direct.ok) return Buffer.from(await direct.arrayBuffer());
+      this.logger.warn(`[áudio] link direto da Meta respondeu ${direct.status}; tentando pelo id da mídia`);
+    }
     const info = await this.fetch(`${this.cfg.graphUrl}/${this.cfg.graphVersion}/${encodeURIComponent(mediaId)}`, { headers: auth });
     const meta = await info.json().catch(() => ({}));
     if (!info.ok || !meta.url) {
-      const err = new Error(`Meta não entregou o áudio ${mediaId} (${info.status}): ${JSON.stringify(meta.error?.message || meta).slice(0, 200)}`);
+      const err = new Error(`Meta não entregou o áudio ${mediaId} (${info.status}): ${JSON.stringify(meta.error?.message || meta).slice(0, 160)}. O WHATSAPP_TOKEN precisa ser um token de usuário do sistema com whatsapp_business_messaging na conta do WhatsApp`);
       err.permanent = info.status === 400 || info.status === 401 || info.status === 403 || info.status === 404;
       throw err;
     }

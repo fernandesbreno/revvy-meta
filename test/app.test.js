@@ -64,6 +64,10 @@ before(async () => {
       if (u.pathname === '/api/v1/contacts/c-laura') {
         return send(200, { success: true, data: { id: 'c-laura', conversations: [{ id: 'conv-velha', channel: 'whatsapp', created_at: '2026-09-01 10:00:00-03' }, { id: 'conv-laura', channel: 'whatsapp', created_at: '2026-10-20 14:18:20-03' }] } });
       }
+      if (u.pathname === '/lookaside/audio') {
+        if (req.headers.authorization !== 'Bearer tok-wa') return send(401, {});
+        res.writeHead(200, { 'content-type': 'audio/ogg' }); return res.end(Buffer.from('OggS-direto'));
+      }
       if (u.pathname === '/midia/audio.ogg') { res.writeHead(200, { 'content-type': 'audio/ogg' }); return res.end(Buffer.from('OggS-audio-falso')); }
       if (u.pathname === '/openai/audio/transcriptions') {
         transcribeCalls.push({ auth: req.headers.authorization, body });
@@ -767,5 +771,17 @@ test('confirmação de sessão pelo Revvy: usa o contato do webhook; mensagem do
     for (let i = 0; i < 50 && !app.store.state.recepcao.log.length; i++) await new Promise((r) => setTimeout(r, 20));
     assert.equal(revvyWrites.filter((w) => w.path === '/api/v1/deals/move').length, 0, 'já estava na Recepção');
     assert.equal(app.store.state.recepcao.log[0].resultado, 'já estava na Recepção');
+  } finally { await stopApp(); }
+});
+
+test('áudio do celular: baixa pelo link que vem no aviso, sem precisar consultar o id da mídia', async () => {
+  await startApp({ TRANSCREVER_AUDIOS_EQUIPE: 'true', OPENAI_API_KEY: 'sk-teste', WHATSAPP_TOKEN: 'tok-wa' });
+  try {
+    const body = echo();
+    body.entry[0].changes[0].value.message_echoes[0].audio = { id: 'SEM-PERMISSAO', url: mockUrl + '/lookaside/audio', mime_type: 'audio/ogg' };
+    const [m] = parseEchoes(body);
+    assert.equal(m.metaUrl, null, 'link http (não https) é ignorado');
+    const buf = await app.audios.downloadFromMeta('SEM-PERMISSAO', mockUrl + '/lookaside/audio');
+    assert.equal(buf.toString(), 'OggS-direto');
   } finally { await stopApp(); }
 });
