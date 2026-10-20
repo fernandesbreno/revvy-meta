@@ -83,10 +83,14 @@ export class AudioTranscriber {
   constructor({ cfg, store, revvy, fetchImpl = fetch, logger = console }) {
     Object.assign(this, { cfg: cfg.audios, revvyCfg: cfg.revvy, store, revvy, fetch: fetchImpl, logger });
     this.timers = new Set();
+    // áudios que estavam na fila quando o app reiniciou (Deploy) voltam a ser transcritos
+    for (const [key, m] of Object.entries(this.st.fila)) this.schedule({ key, m, attempts: 0 }, 5_000);
   }
 
   get st() {
-    return (this.store.state.audios ||= { feitos: {}, amostras: [], log: [] });
+    const st = (this.store.state.audios ||= { feitos: {}, amostras: [], log: [] });
+    st.fila ||= {};
+    return st;
   }
 
   get ligado() { return Boolean(this.cfg.ligado && this.cfg.apiKey); }
@@ -101,17 +105,20 @@ export class AudioTranscriber {
   /** Recebe o payload do webhook de mensagem. Devolve o que foi feito, para a resposta HTTP. */
   handle(body) {
     const st = this.st;
-    st.amostras.unshift({ em: agoraBr(), payload: sample(body) });
-    st.amostras.length = Math.min(st.amostras.length, 5);
     const m = parseMessageWebhook(body);
+    // guarda só o que a equipe mandou: com "mensagem recebida" ligado, as dos clientes empurrariam as da equipe para fora
+    if (m.fromMe) {
+      st.amostras.unshift({ em: agoraBr(), payload: sample(body) });
+      st.amostras.length = Math.min(st.amostras.length, 5);
+    }
     if (!m.isAudio) { this.store.save(); return { ignorado: 'não é áudio' }; }
     if (!m.fromMe) { this.store.save(); return { ignorado: 'áudio do cliente (o Revvy já transcreve)' }; }
     if (!m.conversationId) { this.log({ resultado: 'ignorado', detalhe: 'áudio sem conversation_id no webhook' }); return { ignorado: 'sem conversa' }; }
     if (!m.mediaUrl && !m.base64) { this.log({ resultado: 'ignorado', conversa: m.conversationId, detalhe: 'webhook não trouxe o link nem o conteúdo do áudio' }); return { ignorado: 'sem link do áudio' }; }
     if (!this.ligado) { this.log({ resultado: 'ignorado', conversa: m.conversationId, detalhe: 'transcrição desligada (TRANSCREVER_AUDIOS_EQUIPE e OPENAI_API_KEY)' }); return { ignorado: 'desligado' }; }
     const key = m.messageId || `${m.conversationId}:${m.mediaUrl || m.base64.slice(0, 40)}`;
-    if (st.feitos[key]) { this.store.save(); return { ignorado: 'já transcrito' }; }
-    st.feitos[key] = 'fila';
+    if (st.feitos[key] || st.fila[key]) { this.store.save(); return { ignorado: 'já transcrito' }; }
+    st.fila[key] = m;
     this.store.save();
     this.schedule({ key, m, attempts: 0 }, 0);
     return { ok: true, transcrevendo: true };
@@ -135,13 +142,14 @@ export class AudioTranscriber {
         body: { note: nota, ...(m.userId && this.cfg.autorDaNota ? { note_user_id: m.userId } : {}) },
         headers: { 'Idempotency-Key': `audio-${key}`.slice(0, 128) },
       });
+      delete this.st.fila[key];
       this.st.feitos[key] = Math.floor(Date.now() / 1000);
       this.log({ resultado: 'transcrito', conversa: m.conversationId, caracteres: texto.length });
     } catch (err) {
       job.attempts += 1;
       const delay = RETRY_DELAYS_S[job.attempts - 1];
       if (delay === undefined || err.permanent) {
-        delete this.st.feitos[key];
+        delete this.st.fila[key];
         this.log({ resultado: 'erro', conversa: m.conversationId, detalhe: err.message });
         this.logger.error(`[áudio] desistiu da conversa ${m.conversationId}: ${err.message}`);
       } else {
