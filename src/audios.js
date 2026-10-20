@@ -1,3 +1,5 @@
+import { agoraBr } from './store.js';
+
 /**
  * Transcreve os áudios que a equipe manda no WhatsApp e grava o texto como nota interna da conversa.
  * O Revvy já transcreve os áudios do cliente, mas não os da atendente, e a API não entrega o arquivo;
@@ -91,7 +93,7 @@ export class AudioTranscriber {
 
   log(entry) {
     const st = this.st;
-    st.log.unshift({ em: new Date().toISOString(), ...entry });
+    st.log.unshift({ em: agoraBr(), ...entry });
     st.log.length = Math.min(st.log.length, 100);
     this.store.save();
   }
@@ -99,7 +101,7 @@ export class AudioTranscriber {
   /** Recebe o payload do webhook de mensagem. Devolve o que foi feito, para a resposta HTTP. */
   handle(body) {
     const st = this.st;
-    st.amostras.unshift({ em: new Date().toISOString(), payload: sample(body) });
+    st.amostras.unshift({ em: agoraBr(), payload: sample(body) });
     st.amostras.length = Math.min(st.amostras.length, 5);
     const m = parseMessageWebhook(body);
     if (!m.isAudio) { this.store.save(); return { ignorado: 'não é áudio' }; }
@@ -143,6 +145,7 @@ export class AudioTranscriber {
         this.log({ resultado: 'erro', conversa: m.conversationId, detalhe: err.message });
         this.logger.error(`[áudio] desistiu da conversa ${m.conversationId}: ${err.message}`);
       } else {
+        this.log({ resultado: 'nova tentativa', conversa: m.conversationId, tentativa: job.attempts, detalhe: err.message });
         this.logger.warn(`[áudio] tentando de novo em ${delay} s: ${err.message}`);
         this.schedule(job, delay * 1000);
       }
