@@ -7,6 +7,7 @@ import { Processor } from './processor.js';
 import { reconcile } from './reconcile.js';
 import { LeadsImporter } from './leads.js';
 import { Distributor } from './distribuidor.js';
+import { privacyPage } from './privacidade.js';
 import { AudioTranscriber, isMessageWebhook, parseEchoes, verifyMetaSignature } from './audios.js';
 
 export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
@@ -25,6 +26,11 @@ export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
 
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://local');
+
+    if (req.method === 'GET' && (url.pathname === '/privacidade' || url.pathname === '/privacy')) {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      return res.end(privacyPage(cfg.privacidade));
+    }
 
     if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/health')) {
       return json(res, 200, { ok: true, pendentes: store.state.pending.length, modo_teste: Boolean(cfg.meta.testEventCode) });
