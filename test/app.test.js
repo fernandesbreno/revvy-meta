@@ -702,6 +702,8 @@ test('áudio mandado pelo celular: eco da Meta vira nota na conversa do contato,
     assert.match(notes[0].body.note, /^🎙️ Transcrição do áudio \(\d\d:\d\d\):\nOi amiga/);
     const st = await (await fetch(appUrl + '/audios?token=adm')).json();
     assert.equal(st.avisos_da_meta[0].campos, 'smb_message_echoes');
+    assert.equal(st.avisos_da_meta[0].tipos, 'audio,text');
+    assert.equal(st.exemplos_ecos_celular.length, 1);
     await metaPost(echo()); // a Meta reenviou: não duplica
     assert.equal(app.store.state.audios.fila['wamid.ECO1'], undefined);
     assert.equal(transcribeCalls.length, 1);

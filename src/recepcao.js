@@ -1,5 +1,6 @@
 import { agoraBr } from './store.js';
 import { normalize } from './config.js';
+import { echoMessages } from './audios.js';
 
 /**
  * Quando a equipe manda a mensagem de confirmação da sessão ("Passando para confirmar sua sessão do dia ..."),
@@ -19,8 +20,7 @@ export function parseEchoTexts(body) {
   const out = [];
   for (const entry of body?.entry || []) {
     for (const change of entry.changes || []) {
-      const v = change.value || {};
-      for (const e of [...(v.message_echoes || []), ...(change.field === 'smb_message_echoes' ? v.messages || [] : [])]) {
+      for (const e of echoMessages(change)) {
         const text = e.text?.body || e.image?.caption || e.video?.caption || e.document?.caption;
         if (!text) continue;
         out.push({ messageId: e.id ? String(e.id) : null, phone: String(e.to || '').replace(/\D/g, ''), contactId: null, text: String(text) });

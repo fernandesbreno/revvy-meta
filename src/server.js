@@ -9,7 +9,7 @@ import { LeadsImporter } from './leads.js';
 import { Distributor } from './distribuidor.js';
 import { privacyPage } from './privacidade.js';
 import { ConfirmacaoRecepcao, parseEchoTexts, parseRevvyText } from './recepcao.js';
-import { AudioTranscriber, isMessageWebhook, parseEchoes, verifyMetaSignature } from './audios.js';
+import { AudioTranscriber, isMessageWebhook, parseEchoes, echoMessages, sample, verifyMetaSignature } from './audios.js';
 
 export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
   const store = new Store(cfg.dataDir);
@@ -73,6 +73,7 @@ export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
         transcritos_total: Object.values(st.feitos).filter((v) => typeof v === 'number').length,
         ultimos: st.log.slice(0, 50),
         avisos_da_meta: st.avisos_meta || [],
+        exemplos_ecos_celular: st.exemplos_ecos || [],
         ultimos_webhooks: st.amostras,
       });
     }
@@ -108,9 +109,12 @@ export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
         // registra todo aviso da Meta (mesmo sem áudio), para saber se ela está chamando o app
         const campos = (body.entry || []).flatMap((e) => (e.changes || []).map((c) => c.field)).join(',');
         const st = audios.st;
-        st.avisos_meta = [{ em: agoraBr(), campos, audios: ecos.length }, ...(st.avisos_meta || [])].slice(0, 20);
+        const tipos = (body.entry || []).flatMap((e) => (e.changes || []).flatMap((c) => echoMessages(c).map((m) => m.type))).join(',');
+        st.avisos_meta = [{ em: agoraBr(), campos, tipos, audios: ecos.length }, ...(st.avisos_meta || [])].slice(0, 20);
+        // exemplos dos ecos do celular, para conferir o formato que a Meta manda
+        if (/smb_message_echoes/.test(campos)) st.exemplos_ecos = [{ em: agoraBr(), payload: sample(body) }, ...(st.exemplos_ecos || [])].slice(0, 5);
         store.save();
-        logger.log(`[whatsapp] aviso da Meta: ${campos || 'sem campo'} (${ecos.length} áudio(s))`);
+        logger.log(`[whatsapp] aviso da Meta: ${campos || 'sem campo'}${tipos ? ` [${tipos}]` : ''} (${ecos.length} áudio(s))`);
         for (const m of ecos) audios.handleEcho(m);
         // um instante para o Revvy registrar a mensagem e o contato
         for (const m of parseEchoTexts(body)) recepcao.handle(m, 3_000);

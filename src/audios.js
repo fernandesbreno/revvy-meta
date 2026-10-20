@@ -68,7 +68,7 @@ export function parseMessageWebhook(body) {
 }
 
 /** Cópia do payload sem textos longos (base64), para mostrar em /audios. */
-function sample(body) {
+export function sample(body) {
   return JSON.parse(JSON.stringify(body, (k, v) => (typeof v === 'string' && v.length > 300 ? `${v.slice(0, 80)}… (${v.length} caracteres)` : v)));
 }
 
@@ -83,14 +83,28 @@ function hourBr(at) {
  * em coexistência com a API oficial. O Revvy não avisa essas mensagens no webhook dele, então a Meta
  * avisa direto o nosso app. Devolve só os áudios.
  */
+/** Mensagens dentro do aviso: em message_echoes, messages ou em qualquer lista com objetos que tenham id e type. */
+export function echoMessages(change) {
+  const v = change?.value || {};
+  if (change?.field !== 'smb_message_echoes' && !v.message_echoes) return [];
+  const found = [];
+  const walk = (x, depth) => {
+    if (!x || typeof x !== 'object' || depth > 4) return;
+    if (Array.isArray(x)) { for (const i of x) walk(i, depth + 1); return; }
+    if (x.id && x.type && (x.from || x.to || x.timestamp)) { found.push(x); return; }
+    for (const k of Object.keys(x)) walk(x[k], depth + 1);
+  };
+  walk(v, 0);
+  return found;
+}
+
 export function parseEchoes(body) {
   const out = [];
   for (const entry of body?.entry || []) {
     for (const change of entry.changes || []) {
-      const v = change.value || {};
-      for (const e of [...(v.message_echoes || []), ...(change.field === 'smb_message_echoes' ? v.messages || [] : [])]) {
-        const media = e.audio || e.voice;
-        if (!media?.id || !/audio|voice/.test(e.type || 'audio')) continue;
+      for (const e of echoMessages(change)) {
+        const media = e.audio || e.voice || e.ptt;
+        if (!media?.id || !/audio|voice|ptt/.test(e.type || 'audio')) continue;
         out.push({
           messageId: e.id ? String(e.id) : null,
           conversationId: null,
