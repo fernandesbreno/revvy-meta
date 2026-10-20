@@ -120,6 +120,19 @@ O Revvy transcreve os áudios do cliente, mas não os que a atendente manda. Com
 | `TRANSCRICAO_API_URL` | `https://api.openai.com/v1` | Outro serviço compatível com a API da OpenAI |
 | `TRANSCRICAO_AUTOR_DA_NOTA` | `true` | `false` grava a nota no nome do administrador em vez de quem mandou o áudio |
 
+### Áudios mandados pelo celular
+O Revvy só avisa as mensagens enviadas pela tela dele. As que a atendente manda pelo app do WhatsApp no celular (número em coexistência com a API oficial) chegam ao app direto da Meta, pelo webhook `smb_message_echoes`. O app baixa o áudio pela Graph API, acha a conversa do contato no Revvy pelo telefone e grava a nota.
+
+1. Em developers.facebook.com, no app da Meta da empresa: **WhatsApp → Configuração → Webhook**. URL de callback `https://SEU-DOMINIO/webhooks/whatsapp`, token de verificação igual ao `WHATSAPP_VERIFY_TOKEN`. Depois, em **Campos do webhook**, assine `smb_message_echoes`. O app precisa estar no modo **Publicado** (Live).
+2. Ligue o app à conta do WhatsApp: no Explorador da Graph API, com esse app e um token com `whatsapp_business_management`, faça `POST /{WHATSAPP_BUSINESS_ACCOUNT_ID}/subscribed_apps`. O Revvy continua recebendo tudo normalmente.
+3. Variáveis:
+
+| Variável | Para que serve |
+|---|---|
+| `WHATSAPP_VERIFY_TOKEN` | Senha que você inventa e repete no painel da Meta |
+| `META_APP_SECRET` | Configurações do app → Básico → Chave secreta do app. Sem ela os avisos são recusados |
+| `WHATSAPP_TOKEN` | Token de usuário do sistema com `whatsapp_business_messaging` e acesso à conta do WhatsApp, para baixar os áudios. Se vazio, usa o `META_ACCESS_TOKEN` |
+
 ## Etapas do funil
 O arquivo [`etapas.json`](etapas.json) liga o nome de cada coluna do kanban ao evento da Meta. Para mudar, edite o arquivo aqui no GitHub e clique em **Deploy** no Easypanel. Maiúsculas e acentos não importam.
 

@@ -12,7 +12,7 @@ import { reconcile } from '../src/reconcile.js';
 import { leadContact } from '../src/leads.js';
 import { revvyTime, parseAttendants, parseHours, isOpen } from '../src/distribuidor.js';
 import { hashedUserData } from '../src/meta.js';
-import { parseMessageWebhook, isMessageWebhook } from '../src/audios.js';
+import { parseMessageWebhook, isMessageWebhook, parseEchoes } from '../src/audios.js';
 
 const SECRET = 'segredo-teste';
 const sha = (v) => crypto.createHash('sha256').update(v).digest('hex');
@@ -52,6 +52,16 @@ before(async () => {
         if (u.pathname === '/api/v1/conversations/transfer') return send(200, { success: true });
         if (/^\/api\/v1\/conversations\/[^/]+\/notes$/.test(u.pathname)) return send(200, { success: true });
         if (u.pathname.startsWith('/api/v1/deals/')) return send(200, { success: true });
+      }
+      if (u.pathname === '/graph/v24.0/MEDIA1') {
+        if (req.headers.authorization !== 'Bearer tok-wa') return send(401, { error: { message: 'token' } });
+        return send(200, { url: mockUrl + '/midia/audio.ogg', mime_type: 'audio/ogg' });
+      }
+      if (u.pathname === '/api/v1/contacts' && u.searchParams.get('search') === '94498854') {
+        return send(200, { success: true, data: [{ id: 'c-laura', phone: '5586994498854' }] });
+      }
+      if (u.pathname === '/api/v1/contacts/c-laura') {
+        return send(200, { success: true, data: { id: 'c-laura', conversations: [{ id: 'conv-velha', channel: 'whatsapp', created_at: '2026-09-01 10:00:00-03' }, { id: 'conv-laura', channel: 'whatsapp', created_at: '2026-10-20 14:18:20-03' }] } });
       }
       if (u.pathname === '/midia/audio.ogg') { res.writeHead(200, { 'content-type': 'audio/ogg' }); return res.end(Buffer.from('OggS-audio-falso')); }
       if (u.pathname === '/openai/audio/transcriptions') {
@@ -649,4 +659,45 @@ test('áudio na fila quando o app reinicia é transcrito depois do Deploy', asyn
   assert.equal(store.state.audios.fila['msg-9'], undefined);
   assert.equal(typeof store.state.audios.feitos['msg-9'], 'number');
   rmSync(keep, { recursive: true, force: true });
+});
+
+const echo = (id = 'wamid.ECO1') => ({ object: 'whatsapp_business_account', entry: [{ id: 'waba', changes: [{ field: 'smb_message_echoes', value: { messaging_product: 'whatsapp', metadata: { phone_number_id: '1' }, message_echoes: [
+  { from: '558688828131', to: '558694498854', id, timestamp: '1792430955', type: 'audio', audio: { id: 'MEDIA1', mime_type: 'audio/ogg; codecs=opus', voice: true } },
+  { from: '558688828131', to: '558694498854', id: 'wamid.TXT', timestamp: '1792430956', type: 'text', text: { body: 'oi' } },
+] } }] }] });
+function metaPost(body, secret = 'segredo-app') {
+  const raw = JSON.stringify(body);
+  const sig = 'sha256=' + crypto.createHmac('sha256', secret).update(raw).digest('hex');
+  return fetch(appUrl + '/webhooks/whatsapp', { method: 'POST', headers: { 'content-type': 'application/json', 'x-hub-signature-256': sig }, body: raw });
+}
+
+test('parseEchoes pega só os áudios do eco', () => {
+  const e = parseEchoes(echo());
+  assert.equal(e.length, 1);
+  assert.deepEqual([e[0].messageId, e[0].mediaId, e[0].phone], ['wamid.ECO1', 'MEDIA1', '558694498854']);
+});
+
+test('áudio mandado pelo celular: eco da Meta vira nota na conversa do contato, achada pelo telefone sem o 9', async () => {
+  await startApp({ TRANSCREVER_AUDIOS_EQUIPE: 'true', OPENAI_API_KEY: 'sk-teste', TRANSCRICAO_API_URL: mockUrl + '/openai', WHATSAPP_TOKEN: 'tok-wa', META_APP_SECRET: 'segredo-app', WHATSAPP_VERIFY_TOKEN: 'verifica' });
+  try {
+    const v = await fetch(appUrl + '/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=verifica&hub.challenge=123');
+    assert.equal(await v.text(), '123');
+    assert.equal((await fetch(appUrl + '/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=errado&hub.challenge=1')).status, 403);
+    assert.equal((await metaPost(echo(), 'outro')).status, 401);
+    // o app espera 3 s pelo Revvy; nos testes, roda a fila na hora
+    for (const t of app.audios.timers) clearTimeout(t);
+    app.audios.timers.clear();
+    assert.equal((await metaPost(echo())).status, 200);
+    const job = app.store.state.audios.fila['wamid.ECO1'];
+    assert.ok(job);
+    for (const t of app.audios.timers) clearTimeout(t);
+    app.audios.timers.clear();
+    await app.audios.run({ key: 'wamid.ECO1', m: job, attempts: 0 });
+    const notes = revvyWrites.filter((w) => w.path === '/api/v1/conversations/conv-laura/notes');
+    assert.equal(notes.length, 1);
+    assert.match(notes[0].body.note, /^🎙️ Transcrição do áudio \(\d\d:\d\d\):\nOi amiga/);
+    await metaPost(echo()); // a Meta reenviou: não duplica
+    assert.equal(app.store.state.audios.fila['wamid.ECO1'], undefined);
+    assert.equal(transcribeCalls.length, 1);
+  } finally { await stopApp(); }
 });

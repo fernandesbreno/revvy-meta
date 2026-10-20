@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { agoraBr } from './store.js';
 
 /**
@@ -77,6 +78,43 @@ function hourBr(at) {
   return new Date(d.getTime() - 3 * 3600_000).toISOString().slice(11, 16);
 }
 
+/**
+ * Ecos do WhatsApp (campo smb_message_echoes): o que a atendente manda pelo app do celular num número
+ * em coexistência com a API oficial. O Revvy não avisa essas mensagens no webhook dele, então a Meta
+ * avisa direto o nosso app. Devolve só os áudios.
+ */
+export function parseEchoes(body) {
+  const out = [];
+  for (const entry of body?.entry || []) {
+    for (const change of entry.changes || []) {
+      const v = change.value || {};
+      for (const e of [...(v.message_echoes || []), ...(change.field === 'smb_message_echoes' ? v.messages || [] : [])]) {
+        const media = e.audio || e.voice;
+        if (!media?.id || !/audio|voice/.test(e.type || 'audio')) continue;
+        out.push({
+          messageId: e.id ? String(e.id) : null,
+          conversationId: null,
+          phone: String(e.to || '').replace(/\D/g, ''),
+          fromMe: true,
+          isAudio: true,
+          mediaId: String(media.id),
+          mime: media.mime_type || null,
+          at: e.timestamp ? new Date(Number(e.timestamp) * 1000).toISOString() : null,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/** Confere X-Hub-Signature-256 = sha256=HMAC_SHA256(corpo_bruto, app secret). */
+export function verifyMetaSignature({ appSecret, signature, rawBody }) {
+  if (!signature) return false;
+  const expected = Buffer.from(crypto.createHmac('sha256', appSecret).update(rawBody).digest('hex'));
+  const got = Buffer.from(String(signature).replace(/^sha256=/i, '').toLowerCase());
+  return expected.length === got.length && crypto.timingSafeEqual(expected, got);
+}
+
 const RETRY_DELAYS_S = [30, 120, 600];
 
 export class AudioTranscriber {
@@ -124,6 +162,31 @@ export class AudioTranscriber {
     return { ok: true, transcrevendo: true };
   }
 
+  /** Áudio que a atendente mandou pelo celular, vindo do eco da Meta. */
+  handleEcho(m) {
+    const st = this.st;
+    if (!this.ligado) { this.log({ resultado: 'ignorado', detalhe: 'áudio do celular, mas a transcrição está desligada' }); return; }
+    const key = m.messageId || `eco:${m.mediaId}`;
+    if (st.feitos[key] || st.fila[key]) return;
+    st.fila[key] = m;
+    this.store.save();
+    // um instante para o Revvy registrar a mensagem e a conversa existir
+    this.schedule({ key, m, attempts: 0 }, 3_000);
+  }
+
+  /** Conversa de WhatsApp mais recente do contato com esse telefone (o WhatsApp às vezes manda o número sem o 9). */
+  async conversationByPhone(phone) {
+    const tail = phone.slice(-8);
+    const found = await this.revvy.request(`/api/v1/contacts?search=${encodeURIComponent(tail)}&limit=10`);
+    const contact = (found.data || []).find((c) => String(c.phone || '').replace(/\D/g, '').endsWith(tail));
+    if (!contact) throw new Error(`contato com final ${tail} não encontrado no Revvy`);
+    const full = await this.revvy.getContact(contact.id);
+    const convs = (full.conversations || []).filter((c) => !c.channel || c.channel === 'whatsapp');
+    convs.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    if (!convs[0]) throw new Error(`contato ${contact.id} sem conversa de WhatsApp no Revvy`);
+    return convs[0].id;
+  }
+
   schedule(job, delayMs) {
     const t = setTimeout(() => { this.timers.delete(t); this.run(job); }, delayMs);
     this.timers.add(t);
@@ -132,6 +195,7 @@ export class AudioTranscriber {
   async run(job) {
     const { key, m } = job;
     try {
+      if (!m.conversationId) m.conversationId = await this.conversationByPhone(m.phone);
       const audio = await this.download(m);
       const texto = (await this.transcribe(audio, m.mime)).trim();
       const quem = m.senderName ? ` de ${m.senderName}` : '';
@@ -162,6 +226,7 @@ export class AudioTranscriber {
 
   async download(m) {
     if (m.base64) return Buffer.from(m.base64, 'base64');
+    if (m.mediaId) return this.downloadFromMeta(m.mediaId);
     // link do próprio Revvy pode exigir a chave da API; links externos (WhatsApp/S3) vão sem ela
     const sameHost = new URL(m.mediaUrl).host === new URL(this.revvyCfg.baseUrl).host;
     const res = await this.fetch(m.mediaUrl, { headers: sameHost ? { Authorization: `Bearer ${this.revvyCfg.apiKey}` } : {} });
@@ -173,6 +238,21 @@ export class AudioTranscriber {
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.length > 25 * 1024 * 1024) throw Object.assign(new Error('áudio maior que 25 MB'), { permanent: true });
     return buf;
+  }
+
+  /** Mídia do WhatsApp: pergunta o link à Graph API e baixa com o mesmo token. */
+  async downloadFromMeta(mediaId) {
+    const auth = { Authorization: `Bearer ${this.cfg.whatsappToken}` };
+    const info = await this.fetch(`${this.cfg.graphUrl}/${this.cfg.graphVersion}/${encodeURIComponent(mediaId)}`, { headers: auth });
+    const meta = await info.json().catch(() => ({}));
+    if (!info.ok || !meta.url) {
+      const err = new Error(`Meta não entregou o áudio ${mediaId} (${info.status}): ${JSON.stringify(meta.error?.message || meta).slice(0, 200)}`);
+      err.permanent = info.status === 400 || info.status === 401 || info.status === 403 || info.status === 404;
+      throw err;
+    }
+    const res = await this.fetch(meta.url, { headers: auth });
+    if (!res.ok) throw new Error(`não consegui baixar o áudio da Meta (${res.status})`);
+    return Buffer.from(await res.arrayBuffer());
   }
 
   async transcribe(audio, mime) {
