@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { loadConfig } from './config.js';
+import { loadConfig, normalize } from './config.js';
 import { Store, agoraBr } from './store.js';
 import { RevvyClient, parseWebhook, verifySignature } from './revvy.js';
 import { MetaClient } from './meta.js';
@@ -55,12 +55,25 @@ export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
       if (url.searchParams.get('confirmar') !== 'sim') {
         return json(res, 400, { erro: 'acrescente &confirmar=sim: isso reenvia ao conjunto de dados atual tudo dos últimos 7 dias' });
       }
-      const esquecidos = Object.keys(store.state.sent).length;
-      store.state.sent = {};
-      store.log({ resultado: 'reenvio', detalhe: `${esquecidos} envios esquecidos; reenviando os últimos 7 dias ao conjunto ${cfg.meta.datasetId}` });
+      // exceto=Purchase,LeadSubmitted: esses eventos já foram enviados com o mesmo nome e não podem sair de novo
+      const exceto = (url.searchParams.get('exceto') || '').split(',').map(normalize).filter(Boolean);
+      const manter = (key) => {
+        if (!exceto.length) return false;
+        if (key.startsWith('contato:')) return exceto.includes(normalize(key.split(':').slice(2).join(':')));
+        const stage = cfg.stages.find((s) => key.endsWith(`:${s.key.replace(/\s+/g, '_')}`));
+        return Boolean(stage && [stage.crm, stage.mensagens, stage.site].some((n) => n && exceto.includes(normalize(n))));
+      };
+      const sent = {};
+      let esquecidos = 0;
+      for (const [k, v] of Object.entries(store.state.sent)) {
+        if (manter(k)) sent[k] = v; else esquecidos += 1;
+      }
+      store.state.sent = sent;
+      const mantidos = Object.keys(sent).length;
+      store.log({ resultado: 'reenvio', detalhe: `${esquecidos} envios esquecidos, ${mantidos} mantidos (${exceto.join(', ') || 'nenhum'}); reenviando os últimos 7 dias ao conjunto ${cfg.meta.datasetId}` });
       store.save();
       runReconcile();
-      return json(res, 200, { ok: true, esquecidos, conjunto: cfg.meta.datasetId, detalhe: 'reenvio começou; acompanhe em /status' });
+      return json(res, 200, { ok: true, esquecidos, mantidos, conjunto: cfg.meta.datasetId, detalhe: 'reenvio começou; acompanhe em /status' });
     }
 
     // Transcrição dos áudios da equipe: o que foi feito e os últimos webhooks de mensagem recebidos, para conferir o formato

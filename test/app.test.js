@@ -621,6 +621,22 @@ test('reenviar: só com token e confirmação, e esquece o que já foi enviado',
   } finally { await stopApp(); }
 });
 
+test('reenviar com exceto: mantém Purchase e o LeadSubmitted por contato, esquece o resto', async () => {
+  await startApp();
+  try {
+    app.store.markSent('d1:venda_concluida');
+    app.store.markSent('d1:lead_qualificado');
+    app.store.markSent('contato:c1:LeadSubmitted');
+    app.store.markSent('contato:c1:QualifiedLead');
+    const r = await (await fetch(appUrl + '/reenviar?token=adm&confirmar=sim&exceto=Purchase,leadsubmitted')).json();
+    assert.deepEqual([r.esquecidos, r.mantidos], [2, 2]);
+    assert.equal(app.store.wasSent('d1:venda_concluida'), true);
+    assert.equal(app.store.wasSent('contato:c1:LeadSubmitted'), true);
+    assert.equal(app.store.wasSent('d1:lead_qualificado'), false);
+    assert.equal(app.store.wasSent('contato:c1:QualifiedLead'), false);
+  } finally { await stopApp(); }
+});
+
 test('parseMessageWebhook entende o webhook de mensagem enviada', () => {
   const m = parseMessageWebhook({ event: 'message.sent', data: { id: 'm1', conversation_id: 'conv1', from_me: true, message_type: 'audio', media_url: 'https://x/a.ogg', sender_name: 'Ana' } });
   assert.deepEqual([m.messageId, m.conversationId, m.fromMe, m.isAudio, m.mediaUrl, m.senderName], ['m1', 'conv1', true, true, 'https://x/a.ogg', 'Ana']);
