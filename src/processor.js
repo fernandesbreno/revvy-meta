@@ -119,7 +119,8 @@ export class Processor {
       if (r.skip) { if (isCurrent) skipped.push(r.skip); return; }
       if (this.store.wasSent(r.event.event_id)) { if (isCurrent) skipped.push('etapa já enviada antes'); return; }
       const ck = contactKey(s, contact, r.event);
-      if (ck && this.store.wasSent(ck)) { if (isCurrent) skipped.push(`${r.event.event_name} já enviado antes para este contato`); return; }
+      // contactKeys: o mesmo evento em mais de uma etapa do lote (etapas puladas) sai uma vez só
+      if (ck && (this.store.wasSent(ck) || contactKeys.includes(ck))) { if (isCurrent) skipped.push(`${r.event.event_name} já enviado antes para este contato`); return; }
       events.push(r.event);
       if (ck) contactKeys.push(ck);
     });
