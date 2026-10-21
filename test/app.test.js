@@ -223,7 +223,7 @@ test('outras origens: rota padrão com dados em hash e fbc; coluna desconhecida 
     await settle();
     assert.equal(metaCalls.length, 1);
     const e = metaCalls[0].body.data[0];
-    assert.equal(e.event_name, 'LeadDesqualificado');
+    assert.equal(e.event_name, 'Lead Desqualificado');
     assert.equal(e.user_data.fbc, 'fb.1.123.abc');
     assert.deepEqual(e.user_data.ct, [sha('saopaulo')]);
     assert.equal(e.user_data.lead_id, undefined);
