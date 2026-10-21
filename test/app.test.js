@@ -161,7 +161,7 @@ test('lead de formulário: envia pela rota CRM, preenche etapas puladas e não d
     await settle();
     assert.equal(metaCalls.length, 1);
     const evs = metaCalls[0].body.data;
-    assert.deepEqual(evs.map((e) => e.event_name), ['Lead', 'Orcamento Enviado', 'Avaliacao Marcada', 'Venda']);
+    assert.deepEqual(evs.map((e) => e.event_name), ['Lead Recebido', 'LeadSubmitted', 'QualifiedLead', 'Purchase']);
     const venda = evs.at(-1);
     assert.equal(venda.action_source, 'system_generated');
     assert.equal(venda.user_data.lead_id, 1234567890123456);
@@ -200,7 +200,7 @@ test('anúncio de WhatsApp: rota Business Messaging, etapa sem equivalente é ig
   contacts.c1.custom_fields = { ctwa_clid: 'ARAkLk' };
   await startApp({ PREENCHER_ETAPAS_PULADAS: 'false' });
   try {
-    await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Lead Qualificado' } } });
+    await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Em Atendimento' } } });
     await settle();
     assert.equal(metaCalls.length, 1);
     const e = metaCalls[0].body.data[0];
@@ -223,14 +223,14 @@ test('outras origens: rota padrão com dados em hash e fbc; coluna desconhecida 
     await settle();
     assert.equal(metaCalls.length, 1);
     const e = metaCalls[0].body.data[0];
-    assert.equal(e.event_name, 'LeadDesqualificado');
+    assert.equal(e.event_name, 'Lead Desqualificado');
     assert.equal(e.user_data.fbc, 'fb.1.123.abc');
     assert.deepEqual(e.user_data.ct, [sha('saopaulo')]);
     assert.equal(e.user_data.lead_id, undefined);
   } finally { await stopApp(); }
 });
 
-test('Lead sai na primeira etapa entre Lead Qualificado, Orçamento e Avaliação, uma vez por contato', async () => {
+test('QualifiedLead sai uma vez só na primeira entre Lead Qualificado, Orçamento e Avaliação, uma vez por contato', async () => {
   contacts.c1.custom_fields = {};
   deals.d2 = { ...deals.d1, id: 'd2' };
   await startApp();
@@ -240,11 +240,11 @@ test('Lead sai na primeira etapa entre Lead Qualificado, Orçamento e Avaliaçã
     assert.equal(metaCalls.length, 0, 'Novo Lead não envia nada');
     await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Orçamento Enviado' } } });
     await settle();
-    assert.deepEqual(metaCalls[0].body.data.map((e) => e.event_name), ['Lead', 'InitiateCheckout'], 'pulou o Lead Qualificado: o Lead sai junto');
+    assert.deepEqual(metaCalls[0].body.data.map((e) => e.event_name), ['LeadSubmitted', 'QualifiedLead'], 'pulou etapas: LeadSubmitted e um QualifiedLead só');
     await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Lead Qualificado' } } });
     await signedPost({ data: { deal_id: 'd2', to_column: { name: 'Lead Qualificado' } } });
     await settle();
-    assert.equal(metaCalls.length, 1, 'o mesmo contato em outro card não gera outro Lead');
+    assert.equal(metaCalls.length, 1, 'o mesmo contato em outro card não gera outro QualifiedLead');
   } finally { await stopApp(); }
 });
 
@@ -258,7 +258,7 @@ test('Direct do Instagram: rota Business Messaging com ig_sid e conjunto de dado
     assert.equal(metaCalls.length, 1);
     assert.match(metaCalls[0].url, /\/222\/events/);
     const evs = metaCalls[0].body.data;
-    assert.deepEqual(evs.map((e) => e.event_name), ['LeadSubmitted', 'InitiateCheckout']);
+    assert.deepEqual(evs.map((e) => e.event_name), ['LeadSubmitted', 'QualifiedLead']);
     assert.equal(evs[0].messaging_channel, 'instagram');
     assert.deepEqual(evs[0].user_data, { instagram_business_account_id: '17841400000000000', ig_sid: '28745191678474277' });
   } finally { await stopApp(); }
@@ -284,7 +284,7 @@ test('WhatsApp sem anúncio: rota padrão pelo telefone, nome que é só número
     await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Link/Avaliação Marcada' } } });
     await settle();
     const e = metaCalls[0].body.data[0];
-    assert.equal(e.event_name, 'Schedule');
+    assert.equal(e.event_name, 'QualifiedLead');
     assert.deepEqual(e.user_data.ph, [sha('5585987106434')]);
     assert.equal(e.user_data.fn, undefined);
     assert.match(metaCalls[0].url, /\/111\/events/);
@@ -297,7 +297,7 @@ test('WhatsApp de anúncio: lê o ctwa_clid da origem da conversa no Revvy; se a
     source: { source_type: 'ads', source_metadata: { ctwa_clid: 'AfiFMp123' } } };
   await startApp({ PREENCHER_ETAPAS_PULADAS: 'false' });
   try {
-    await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Lead Qualificado' } } });
+    await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Em Atendimento' } } });
     await settle();
     assert.deepEqual(metaCalls[0].body.data[0].user_data, { whatsapp_business_account_id: '999', ctwa_clid: 'AfiFMp123' });
     assert.equal(metaCalls[0].body.data[0].event_name, 'LeadSubmitted');
@@ -307,7 +307,23 @@ test('WhatsApp de anúncio: lê o ctwa_clid da origem da conversa no Revvy; se a
     await settle();
     assert.equal(metaCalls.length, 2);
     const e = metaCalls[1].body.data[0];
-    assert.equal(e.event_name, 'InitiateCheckout');
+    assert.equal(e.event_name, 'QualifiedLead');
+    assert.equal(e.messaging_channel, undefined);
+    assert.deepEqual(e.user_data.ph, [sha('5585987106434')]);
+  } finally { await stopApp(); }
+});
+
+test('Clientes/Recepção: cliente que veio por anúncio de WhatsApp manda Cliente pelo telefone, uma vez por contato', async () => {
+  deals.d1.contact = { id: 'c3', name: 'Maria', phone: '5585987106434' };
+  contacts.c3 = { id: 'c3', name: 'Maria', phone: '5585987106434',
+    source: { source_type: 'ads', source_metadata: { ctwa_clid: 'AfiFMp123' } } };
+  await startApp({ PREENCHER_ETAPAS_PULADAS: 'false' });
+  try {
+    await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Clientes/Recepção' } } });
+    await settle();
+    assert.equal(metaCalls.length, 1);
+    const e = metaCalls[0].body.data[0];
+    assert.equal(e.event_name, 'Cliente');
     assert.equal(e.messaging_channel, undefined);
     assert.deepEqual(e.user_data.ph, [sha('5585987106434')]);
   } finally { await stopApp(); }
@@ -319,7 +335,7 @@ test('WhatsApp de anúncio com conjunto de dados próprio: clique vai para META_
     source: { source_type: 'ads', source_metadata: { ctwa_clid: 'AfiFMp123' } } };
   await startApp({ PREENCHER_ETAPAS_PULADAS: 'false', META_DATASET_ID_WHATSAPP: '222' });
   try {
-    await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Lead Qualificado' } } });
+    await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Em Atendimento' } } });
     await settle();
     assert.match(metaCalls[0].url, /\/222\/events/);
     assert.equal(metaCalls[0].body.data[0].event_name, 'LeadSubmitted');
@@ -329,7 +345,7 @@ test('WhatsApp de anúncio com conjunto de dados próprio: clique vai para META_
     await settle();
     assert.equal(metaCalls.length, 2); // a recusada não fica registrada
     assert.match(metaCalls[1].url, /\/111\/events/);
-    assert.equal(metaCalls[1].body.data[0].event_name, 'InitiateCheckout');
+    assert.equal(metaCalls[1].body.data[0].event_name, 'QualifiedLead');
   } finally { await stopApp(); }
 });
 
@@ -374,7 +390,7 @@ test('reconciliação envia movimentações que o webhook perdeu', async () => {
     assert.equal(r.queued, 2, 'ignora a de 10 dias atrás');
     await settle();
     const names = metaCalls.flatMap((c) => c.body.data.map((e) => e.event_name)).sort();
-    assert.deepEqual(names, ['Lead'], 'Novo Lead não envia; o Lead sai no Lead Qualificado');
+    assert.deepEqual(names, ['Lead Recebido', 'QualifiedLead'], 'Novo Lead manda Lead Recebido na rota crm; Lead Qualificado manda QualifiedLead');
     const again = await reconcile({ cfg, store: app.store, revvy: app.processor.revvy, processor: app.processor, logger: quiet, pauseMs: 0 });
     assert.equal(again.queued, 0, 'não repete o que já foi enviado');
   } finally { await stopApp(); }
@@ -602,6 +618,22 @@ test('reenviar: só com token e confirmação, e esquece o que já foi enviado',
     assert.equal(r.esquecidos, 1);
     assert.equal(r.conjunto, '111');
     assert.equal(app.store.wasSent('d1:venda_concluida'), false);
+  } finally { await stopApp(); }
+});
+
+test('reenviar com exceto: mantém Purchase e o LeadSubmitted por contato, esquece o resto', async () => {
+  await startApp();
+  try {
+    app.store.markSent('d1:venda_concluida');
+    app.store.markSent('d1:lead_qualificado');
+    app.store.markSent('contato:c1:LeadSubmitted');
+    app.store.markSent('contato:c1:QualifiedLead');
+    const r = await (await fetch(appUrl + '/reenviar?token=adm&confirmar=sim&exceto=Purchase,leadsubmitted')).json();
+    assert.deepEqual([r.esquecidos, r.mantidos], [2, 2]);
+    assert.equal(app.store.wasSent('d1:venda_concluida'), true);
+    assert.equal(app.store.wasSent('contato:c1:LeadSubmitted'), true);
+    assert.equal(app.store.wasSent('d1:lead_qualificado'), false);
+    assert.equal(app.store.wasSent('contato:c1:QualifiedLead'), false);
   } finally { await stopApp(); }
 });
 

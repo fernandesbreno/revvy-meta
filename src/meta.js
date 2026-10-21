@@ -36,7 +36,7 @@ export function hashedUserData(contact) {
   return ud;
 }
 
-const MESSAGING_ROUTES = ['whatsapp', 'instagram', 'messenger'];
+export const MESSAGING_ROUTES = ['whatsapp', 'instagram', 'messenger'];
 
 /** Decide a rota (crm / whatsapp / instagram / messenger / site) a partir do contato. */
 /** O Revvy pode devolver os campos personalizados como objeto { chave: valor } ou como lista. */

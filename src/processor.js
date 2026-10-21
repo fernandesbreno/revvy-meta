@@ -1,4 +1,4 @@
-import { buildEvent, detectRoute, findStage } from './meta.js';
+import { MESSAGING_ROUTES, buildEvent, detectRoute, findStage } from './meta.js';
 
 // Etapa com "uma_vez_por_contato": o evento sai só no primeiro card do contato que chegar nela
 // (um contato que volta e abre outro card não conta como lead de novo)
@@ -84,7 +84,9 @@ export class Processor {
         this.logger.warn(`contato ${contact.id} indisponível, usando dados do negócio: ${err.message}`);
       }
     }
-    const routeInfo = detectRoute(contact, this.cfg);
+    let routeInfo = detectRoute(contact, this.cfg);
+    // Etapa com nome próprio que a Meta não aceita no formato de mensagens: vai pelo telefone
+    if (stage.pelo_telefone && MESSAGING_ROUTES.includes(routeInfo.route)) routeInfo = { route: 'site' };
     try {
       return await this.sendFor(job, deal, contact, stage, routeInfo);
     } catch (err) {
@@ -117,7 +119,8 @@ export class Processor {
       if (r.skip) { if (isCurrent) skipped.push(r.skip); return; }
       if (this.store.wasSent(r.event.event_id)) { if (isCurrent) skipped.push('etapa já enviada antes'); return; }
       const ck = contactKey(s, contact, r.event);
-      if (ck && this.store.wasSent(ck)) { if (isCurrent) skipped.push(`${r.event.event_name} já enviado antes para este contato`); return; }
+      // contactKeys: o mesmo evento em mais de uma etapa do lote (etapas puladas) sai uma vez só
+      if (ck && (this.store.wasSent(ck) || contactKeys.includes(ck))) { if (isCurrent) skipped.push(`${r.event.event_name} já enviado antes para este contato`); return; }
       events.push(r.event);
       if (ck) contactKeys.push(ck);
     });
