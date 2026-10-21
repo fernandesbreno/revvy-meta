@@ -313,6 +313,22 @@ test('WhatsApp de anúncio: lê o ctwa_clid da origem da conversa no Revvy; se a
   } finally { await stopApp(); }
 });
 
+test('Clientes/Recepção: cliente que veio por anúncio de WhatsApp manda Cliente pelo telefone, uma vez por contato', async () => {
+  deals.d1.contact = { id: 'c3', name: 'Maria', phone: '5585987106434' };
+  contacts.c3 = { id: 'c3', name: 'Maria', phone: '5585987106434',
+    source: { source_type: 'ads', source_metadata: { ctwa_clid: 'AfiFMp123' } } };
+  await startApp({ PREENCHER_ETAPAS_PULADAS: 'false' });
+  try {
+    await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Clientes/Recepção' } } });
+    await settle();
+    assert.equal(metaCalls.length, 1);
+    const e = metaCalls[0].body.data[0];
+    assert.equal(e.event_name, 'Cliente');
+    assert.equal(e.messaging_channel, undefined);
+    assert.deepEqual(e.user_data.ph, [sha('5585987106434')]);
+  } finally { await stopApp(); }
+});
+
 test('WhatsApp de anúncio com conjunto de dados próprio: clique vai para META_DATASET_ID_WHATSAPP, telefone continua no principal', async () => {
   deals.d1.contact = { id: 'c3', name: '5585987106434', phone: '5585987106434' };
   contacts.c3 = { id: 'c3', name: '5585987106434', phone: '5585987106434', custom_fields: [{ key: 'fbc', value: '' }],
