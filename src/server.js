@@ -94,7 +94,7 @@ export function createApp({ cfg, fetchImpl = fetch, logger = console }) {
     // Confirmações de sessão que moveram o card para a Recepção
     if (req.method === 'GET' && url.pathname === '/recepcao') {
       if (!cfg.adminToken || url.searchParams.get('token') !== cfg.adminToken) return json(res, 401, { erro: 'token inválido' });
-      return json(res, 200, { ligado: recepcao.ligado, frases: recepcao.frases, etapa: cfg.recepcao.coluna, etiqueta: cfg.recepcao.etiqueta, ultimos: recepcao.st.log.slice(0, 50) });
+      return json(res, 200, { ligado: recepcao.ligado, regras: recepcao.regras.map((r) => ({ frases: r.frases, etapa: r.coluna, etiqueta: r.etiqueta || null })), etapas_protegidas: cfg.recepcao.protegidas, ultimos: recepcao.st.log.slice(0, 50) });
     }
 
     // Webhook da Meta para os ecos do WhatsApp (áudios que a equipe manda pelo celular)
@@ -254,8 +254,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   console.log(cfg.audios.ligado && cfg.audios.apiKey
     ? `[áudios] transcrevendo os áudios da equipe com ${cfg.audios.modelo} e gravando como nota da conversa`
     : '[áudios] transcrição desligada (TRANSCREVER_AUDIOS_EQUIPE=true e OPENAI_API_KEY)');
-  console.log(cfg.recepcao.ligado
-    ? `[recepção] mensagem de confirmação da sessão move o card para "${cfg.recepcao.coluna}"`
-    : '[recepção] desligada (CONFIRMACAO_RECEPCAO=true)');
+  console.log(app.recepcao.ligado
+    ? `[mensagem → etapa] ${app.recepcao.regras.map((r) => `"${r.frases[0]}" → ${r.coluna}`).join('; ')}`
+    : '[mensagem → etapa] desligada (CONFIRMACAO_RECEPCAO=true ou FRASES_ETAPAS)');
   for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => app.stop().then(() => process.exit(0)));
 }
