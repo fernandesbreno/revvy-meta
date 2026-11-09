@@ -93,6 +93,9 @@ export function buildEvent({ cfg, deal, contact, stage, eventTime, routeInfo, lo
   const column = MESSAGING_ROUTES.includes(routeInfo.route) ? 'mensagens' : routeInfo.route;
   const name = column === 'mensagens' ? (stage.mensagens ?? stage.whatsapp) : stage[column];
   if (!name) return { skip: `etapa "${stage.coluna}" não é enviada na rota ${routeInfo.route}` };
+  // Etapa que exige valor (ex.: Purchase): sem valor no card, espera. A reconciliação tenta de novo
+  // a cada rodada e envia assim que o valor for preenchido (dentro dos 7 dias da Meta).
+  if (stage.exigir_valor && !(Number(deal.value) > 0)) return { skip: `${name} aguardando o valor do card`, semValor: true };
 
   const value = stage.enviar_valor && Number(deal.value) > 0 ? { currency: cfg.meta.currency, value: Number(deal.value) } : {};
   const eventId = `${deal.id}:${stage.key.replace(/\s+/g, '_')}`;

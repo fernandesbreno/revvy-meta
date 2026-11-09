@@ -111,12 +111,13 @@ export class Processor {
     const events = [];
     const skipped = [];
     const contactKeys = [];
+    let waitingValue = false;
     const base = Number(job.eventTime) || Math.floor(Date.now() / 1000);
     stages.forEach((s, i) => {
       const isCurrent = s === stage;
       const t = isCurrent ? base : base - (stages.length - 1 - i); // etapas puladas ficam 1s antes, em ordem
       const r = buildEvent({ cfg: this.cfg, deal, contact, stage: s, eventTime: t, routeInfo, lossReason: job.lossReason });
-      if (r.skip) { if (isCurrent) skipped.push(r.skip); return; }
+      if (r.skip) { if (isCurrent) { skipped.push(r.skip); if (r.semValor) waitingValue = true; } return; }
       if (this.store.wasSent(r.event.event_id)) { if (isCurrent) skipped.push('etapa já enviada antes'); return; }
       const ck = contactKey(s, contact, r.event);
       // contactKeys: o mesmo evento em mais de uma etapa do lote (etapas puladas) sai uma vez só
@@ -127,6 +128,8 @@ export class Processor {
 
     const test = Boolean(this.cfg.meta.testEventCode);
     if (!events.length) {
+      // Sem valor: não marca como tratada, para a reconciliação enviar quando o valor for preenchido
+      if (waitingValue) return { resultado: 'aguardando valor', rota: routeInfo.route, etapa: stage.coluna, detalhe: skipped.join('; ') };
       // Marca a etapa como tratada para a reconciliação não reprocessar o mesmo card a cada rodada
       this.store.markSent(`${deal.id}:${stage.key.replace(/\s+/g, '_')}`, { test });
       this.store.save();

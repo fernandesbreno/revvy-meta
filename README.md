@@ -137,6 +137,9 @@ O Revvy só avisa as mensagens enviadas pela tela dele. As que a atendente manda
 ## Etapas do funil
 O arquivo [`etapas.json`](etapas.json) liga o nome de cada coluna do kanban ao evento da Meta. Para mudar, edite o arquivo aqui no GitHub e clique em **Deploy** no Easypanel. Maiúsculas e acentos não importam.
 
+### Compra só com valor
+Na etapa, `"exigir_valor": true` faz o evento esperar até o card ter valor. Se o card entrar na etapa sem valor, nada é enviado e o `/status` mostra "aguardando valor". Assim que a equipe preencher o valor, a reconciliação (a cada hora) envia o evento com a data em que o card entrou na etapa, desde que dentro dos 7 dias que a Meta aceita.
+
 ## Campos personalizados no Revvy
 Opcionais. Leads do Instagram e do WhatsApp já funcionam sem nenhum campo extra. Para formulários da Meta e anúncios de clique para WhatsApp, crie no contato os campos `meta_lead_id`, `ctwa_clid`, `fbc` e `fbp`.
 

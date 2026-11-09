@@ -396,6 +396,32 @@ test('reconciliação envia movimentações que o webhook perdeu', async () => {
   } finally { await stopApp(); }
 });
 
+test('exigir_valor: Purchase sem valor no card espera e sai pela reconciliação quando o valor é preenchido', async () => {
+  contacts.c1.custom_fields = {};
+  deals.d1.value = null;
+  deals.d1.column = { name: 'Consulta Paga' };
+  histories.d1 = [{ moved_at: ago(30), from_column: { name: 'Novo Lead' }, to_column: { name: 'Consulta Paga' } }];
+  const etapas = { etapas: [
+    { coluna: 'Consulta Paga', crm: 'Purchase', mensagens: 'Purchase', site: 'Purchase', funil: true, enviar_valor: true, exigir_valor: true },
+  ] };
+  const cfg = await startApp({ ETAPAS_JSON: JSON.stringify(etapas) });
+  try {
+    await signedPost({ data: { deal_id: 'd1', to_column: { name: 'Consulta Paga' } } });
+    await settle();
+    assert.equal(metaCalls.length, 0, 'sem valor não envia');
+    deals.d1.value = 350;
+    const r = await reconcile({ cfg, store: app.store, revvy: app.processor.revvy, processor: app.processor, logger: quiet, pauseMs: 0 });
+    assert.equal(r.queued, 1, 'a etapa sem valor não foi marcada como tratada');
+    await settle();
+    assert.equal(metaCalls.length, 1);
+    const e = metaCalls[0].body.data[0];
+    assert.equal(e.event_name, 'Purchase');
+    assert.equal(e.custom_data.value, 350);
+    const again = await reconcile({ cfg, store: app.store, revvy: app.processor.revvy, processor: app.processor, logger: quiet, pauseMs: 0 });
+    assert.equal(again.queued, 0, 'depois de enviado não repete');
+  } finally { await stopApp(); }
+});
+
 test('/status exige token e não expõe dados pessoais', async () => {
   await startApp({ PREENCHER_ETAPAS_PULADAS: 'false' });
   try {
