@@ -174,3 +174,17 @@ Com `CONFIRMACAO_RECEPCAO=true`, quando a equipe manda a mensagem de confirmaç�
 - Mandada pela tela do Revvy: chega pelo webhook de mensagens (o mesmo da transcrição de áudios).
 - Mandada pelo celular: chega pelo webhook da Meta em `/webhooks/whatsapp` (campo `smb_message_echoes`, o mesmo dos áudios).
 - O que foi feito fica em `/recepcao?token=ADMIN_TOKEN`.
+
+## Mensagem da equipe → etapa
+
+`FRASES_ETAPAS` liga outras regras do mesmo jeito: quando a equipe manda uma mensagem que contém a frase (pelo celular ou pela tela do Revvy), o card mais recente do cliente vai para a etapa indicada. Funciona para todos os números da conta do WhatsApp assinada no webhook.
+
+```
+FRASES_ETAPAS=segue o link da avaliacao|link para agendar => Link/Avaliação Marcada; pagamento confirmado => Venda Concluída
+```
+
+- Regras separadas por `;` (ou quebra de linha), frases por `|`, etapa depois de `=>`. Acentos e maiúsculas não importam.
+- A primeira regra que casar vale; cada mensagem é tratada uma vez só.
+- Cards em `FRASES_ETAPAS_PROTEGIDAS` (padrão `Venda Concluída,Clientes/Recepção,Recepção`) não são movidos por essas regras, para cliente que já comprou não voltar no funil.
+- Se o cliente não tiver card, um é criado na etapa.
+- As regras e o que foi feito ficam em `/recepcao?token=ADMIN_TOKEN`.
