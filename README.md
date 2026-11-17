@@ -174,3 +174,24 @@ Com `CONFIRMACAO_RECEPCAO=true`, quando a equipe manda a mensagem de confirmaç�
 - Mandada pela tela do Revvy: chega pelo webhook de mensagens (o mesmo da transcrição de áudios).
 - Mandada pelo celular: chega pelo webhook da Meta em `/webhooks/whatsapp` (campo `smb_message_echoes`, o mesmo dos áudios).
 - O que foi feito fica em `/recepcao?token=ADMIN_TOKEN`.
+
+## Conector MCP único (todas as empresas)
+
+O mesmo repositório sobe, num serviço separado do Easypanel, um conector MCP que alcança todas as empresas do Revvy com um link só no claude.ai. Nada muda nos apps que já existem.
+
+Environment do serviço:
+
+```
+APP_MODE=mcp
+MCP_TOKEN=<texto aleatório com 32+ caracteres>
+REVVY_BASE_URL=https://app.crmrevvy.com.br
+REVVY_KEY_FORTALEZA=<chave de API da empresa no Revvy>
+REVVY_KEY_TERESINA=<chave de API>
+REVVY_KEY_CAMILA=<chave de API>
+```
+
+- **Nova empresa:** adicionar uma linha `REVVY_KEY_<NOME>=<chave>` e fazer Deploy. O nome vira o valor do campo "empresa".
+- **Link no claude.ai:** `https://<domínio do serviço>/mcp/<MCP_TOKEN>` (conector personalizado, sem login).
+- As ferramentas do MCP do Revvy são repassadas com o campo extra `empresa`. Também existem `listar_empresas` e `api_revvy` (API REST `/api/v1`, escrita só com `confirmar=true`).
+- `REVVY_MCP_URL` (padrão `<REVVY_BASE_URL>/mcp`) e `REVVY_MCP_CHAVE` (`bearer`, padrão, ou `query:<parâmetro>` se o Revvy pedir a chave no link) ajustam como o conector fala com o MCP do Revvy.
+- `GET /health` mostra as empresas configuradas.
