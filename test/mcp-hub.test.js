@@ -19,7 +19,7 @@ function fakeRevvy({ sse = false } = {}) {
       return { status: 200, headers: new Map(), text: async () => JSON.stringify({ ok: true, auth, method: init.method }) };
     }
     if (auth === 'Bearer ruim') return { status: 401, headers: new Map(), text: async () => 'no' };
-    if (body.method === 'initialize') return reply({ jsonrpc: '2.0', id: body.id, result: { protocolVersion: '2025-06-18', instructions: 'Chame get_workspace_overview antes.' } });
+    if (body.method === 'initialize') return reply({ jsonrpc: '2.0', id: body.id, result: { protocolVersion: '2025-06-18', instructions: 'Você está conectado ao CRM revvy da empresa "X".\nChame get_workspace_overview antes.' } });
     if (body.method === 'notifications/initialized') return reply(null);
     if (body.method === 'tools/list') {
       return reply({ jsonrpc: '2.0', id: body.id, result: { tools: [
@@ -74,6 +74,7 @@ for (const sse of [false, true]) {
       const init = await rpc('initialize', { protocolVersion: '2025-06-18' });
       assert.match(init.body.result.instructions, /fortaleza, teresina/);
       assert.match(init.body.result.instructions, /get_workspace_overview/);
+      assert.doesNotMatch(init.body.result.instructions, /da empresa "X"/);
 
       const list = await rpc('tools/list', {});
       const names = list.body.result.tools.map((t) => t.name);
