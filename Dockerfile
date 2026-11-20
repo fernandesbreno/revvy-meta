@@ -8,4 +8,5 @@ COPY src ./src
 RUN mkdir -p /data
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s CMD wget -qO- http://127.0.0.1:${PORT:-3000}/health || exit 1
-CMD ["node", "src/server.js"]
+# APP_MODE=mcp sobe o conector MCP único (src/mcp-hub.js); sem ele, o app de sempre
+CMD ["sh", "-c", "if [ \"$APP_MODE\" = mcp ]; then exec node src/mcp-hub.js; else exec node src/server.js; fi"]
