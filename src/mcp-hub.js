@@ -251,7 +251,9 @@ export class Hub {
     const base = `Conector único do Revvy para várias empresas: ${this.nomes().join(', ') || '(nenhuma configurada)'}. `
       + 'Toda ferramenta recebe "empresa". Quando o usuário pedir para focar numa empresa, use essa empresa até ele mudar. '
       + 'Nunca misture dados de empresas diferentes sem deixar claro de qual é cada número.';
-    return this.instructions ? `${base}\n\nRegras do Revvy:\n${this.instructions}` : base;
+    // As instruções do Revvy citam a empresa da chave usada para listar; aqui valem para todas
+    const regras = this.instructions.split('\n').filter((l) => !/^\s*Você está conectado ao CRM/i.test(l)).join('\n').trim();
+    return regras ? `${base}\n\nRegras do Revvy (valem para todas as empresas):\n${regras}` : base;
   }
 
   /** Atende uma mensagem JSON-RPC. Devolve a resposta ou null (notificação). */
