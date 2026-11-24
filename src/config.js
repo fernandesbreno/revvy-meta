@@ -1,3 +1,4 @@
+import { parseFrasesEtapas, parseFrasesEtiquetas } from './frases-etapas.js';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -105,6 +106,11 @@ export function loadConfig(env = process.env) {
       frases: String(env.CONFIRMACAO_FRASES ?? 'confirmar sua sessao|confirmar a sua sessao').split('|').map((f) => f.trim()).filter(Boolean),
       coluna: env.RECEPCAO_COLUNA || 'Recepção',
       etiqueta: String(env.RECEPCAO_ETIQUETA ?? 'Cliente - Recepção').trim(),
+      // outras mensagens da equipe → etapa (ex.: "segue o link da avaliação => Link/Avaliação Marcada; pagamento confirmado => Venda Concluída")
+      regras: [...parseFrasesEtiquetas(env.FRASES_ETIQUETAS), ...parseFrasesEtapas(env.FRASES_ETAPAS)],
+      // FRASES_ETIQUETAS (ex.: "contrato/assinar => Pago") só coloca a etiqueta no contato, sem mover o card
+      // cards nessas etapas não são movidos pelas FRASES_ETAPAS (cliente que já comprou não volta no funil)
+      protegidas: String(env.FRASES_ETAPAS_PROTEGIDAS ?? 'Venda Concluída,Clientes/Recepção,Recepção').split(',').map((e) => e.trim()).filter(Boolean),
     },
     privacidade: {
       empresa: env.EMPRESA_NOME || 'Ice Laser',
