@@ -13,3 +13,11 @@ export function parseFrasesEtapas(raw) {
   }
   return regras;
 }
+
+/**
+ * FRASES_ETIQUETAS: igual ao FRASES_ETAPAS, mas depois do "=>" vem uma etiqueta; o card não muda de etapa.
+ * Ex.: "contrato/assinar => Pago"
+ */
+export function parseFrasesEtiquetas(raw) {
+  return parseFrasesEtapas(raw).map((r) => ({ frases: r.frases, coluna: '', etiqueta: r.coluna, protegeEtapas: false }));
+}

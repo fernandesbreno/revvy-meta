@@ -255,7 +255,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     ? `[áudios] transcrevendo os áudios da equipe com ${cfg.audios.modelo} e gravando como nota da conversa`
     : '[áudios] transcrição desligada (TRANSCREVER_AUDIOS_EQUIPE=true e OPENAI_API_KEY)');
   console.log(app.recepcao.ligado
-    ? `[mensagem → etapa] ${app.recepcao.regras.map((r) => `"${r.frases[0]}" → ${r.coluna}`).join('; ')}`
-    : '[mensagem → etapa] desligada (CONFIRMACAO_RECEPCAO=true ou FRASES_ETAPAS)');
+    ? `[mensagem → etapa] ${app.recepcao.regras.map((r) => `"${r.frases[0]}" → ${r.coluna || `etiqueta ${r.etiqueta}`}`).join('; ')}`
+    : '[mensagem → etapa] desligada (CONFIRMACAO_RECEPCAO=true, FRASES_ETAPAS ou FRASES_ETIQUETAS)');
   for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => app.stop().then(() => process.exit(0)));
 }

@@ -76,7 +76,7 @@ before(async () => {
       let m;
       if ((m = u.pathname.match(/^\/api\/v1\/deals\/([^/]+)\/stage-history$/))) return send(200, { success: true, data: { history: histories[m[1]] || [] } });
       if ((m = u.pathname.match(/^\/api\/v1\/deals\/([^/]+)$/))) return deals[m[1]] ? send(200, { success: true, data: deals[m[1]] }) : send(404, {});
-      if (u.pathname === '/api/v1/tags') return send(200, { success: true, data: [{ id: 't-ana', name: 'Ana' }, { id: 't-eli', name: 'Eli' }, { id: 't-ruana', name: 'Ruana' }, { id: 't-abordado', name: 'Abordado' }, { id: 't-recep', name: 'Cliente - Recepção' }] });
+      if (u.pathname === '/api/v1/tags') return send(200, { success: true, data: [{ id: 't-ana', name: 'Ana' }, { id: 't-eli', name: 'Eli' }, { id: 't-ruana', name: 'Ruana' }, { id: 't-abordado', name: 'Abordado' }, { id: 't-recep', name: 'Cliente - Recepção' }, { id: 't-pago', name: 'Pago' }] });
       if (u.pathname === '/api/v1/columns') return send(200, { success: true, pipelines: [{ id: 'p1', name: 'Comercial', columns: [{ id: 'col-vendido', name: 'Venda Concluída' }, { id: 'col-novo', name: 'Novo Lead' }, { id: 'col-atend', name: 'Em Atendimento' }, { id: 'col-recep', name: 'Recepção' }] }], count: 1 });
       if (u.pathname === '/api/v1/deals') {
         const cid = u.searchParams.get('contact_id');
@@ -862,6 +862,21 @@ test('mensagem da equipe com frase configurada move o card para a etapa; cliente
     assert.equal(revvyWrites.filter((w) => w.path === '/api/v1/deals/move').length, 0);
     assert.match(app.store.state.recepcao.log[0].resultado, /não moveu/);
     assert.equal(app.recepcao.handle({ messageId: 'x', phone: '1', text: 'oi, tudo bem?' }), false, 'mensagem sem frase é ignorada');
+  } finally { await stopApp(); }
+});
+
+test('FRASES_ETIQUETAS: link do contrato coloca a etiqueta Pago sem mexer no card', async () => {
+  deals.dl = { id: 'dl', created_at: ago(60), contact: { id: 'c-laura' }, column: { id: 'col-atend', name: 'Em Atendimento' } };
+  await startApp({ FRASES_ETIQUETAS: 'unidade.espacoicelaser.com/contrato/assinar => Pago', REVVY_WEBHOOK_SECRET_MENSAGENS: 'segredo-msg' });
+  try {
+    const texto = 'estou enviando o contrato\nhttps://unidade.espacoicelaser.com/contrato/assinar/AbC123';
+    const msg = { event: 'new_message_sent', data: { message: { id: 'k1', text: texto, type: 'text', from_me: true, wa_message_id: 'wamid.K1' }, conversation: { id: 'conv' }, contact: { id: 'c-laura', phone: '5586994498854' } } };
+    const r = await (await signedPost(msg, 'segredo-msg')).json();
+    assert.equal(r.recepcao, true);
+    for (let i = 0; i < 50 && !app.store.state.recepcao.log.length; i++) await new Promise((res) => setTimeout(res, 20));
+    assert.deepEqual(revvyWrites.find((w) => w.path === '/api/v1/contacts/tags').body, { contact_id: 'c-laura', tag_ids: ['t-pago'] });
+    assert.equal(revvyWrites.filter((w) => w.path === '/api/v1/deals/move').length, 0);
+    assert.match(app.store.state.recepcao.log[0].resultado, /Pago/);
   } finally { await stopApp(); }
 });
 

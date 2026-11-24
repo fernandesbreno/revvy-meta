@@ -189,6 +189,12 @@ FRASES_ETAPAS=segue o link da avaliacao|link para agendar => Link/Avaliação Ma
 - Se o cliente não tiver card, um é criado na etapa.
 - As regras e o que foi feito ficam em `/recepcao?token=ADMIN_TOKEN`.
 
+`FRASES_ETIQUETAS` funciona igual, mas só coloca uma etiqueta no contato, sem mover o card. Ex.: quando a equipe manda o link do contrato, o contato ganha a etiqueta Pago:
+
+```
+FRASES_ETIQUETAS=espacoicelaser.com/contrato/assinar => Pago
+```
+
 ## Conector MCP único (todas as empresas)
 
 O mesmo repositório sobe, num serviço separado do Easypanel, um conector MCP que alcança todas as empresas do Revvy com um link só no claude.ai. Nada muda nos apps que já existem.

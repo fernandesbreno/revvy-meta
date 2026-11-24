@@ -99,6 +99,13 @@ export class ConfirmacaoRecepcao {
     const destino = regra.coluna;
     try {
       const contactId = m.contactId || (await this.contactByPhone(m.phone));
+      if (!destino) {
+        const tagId = await this.tagId(regra.etiqueta);
+        if (!tagId) throw new Error(`etiqueta "${regra.etiqueta}" não existe no Revvy`);
+        await this.revvy.request('/api/v1/contacts/tags', 0, { method: 'POST', body: { contact_id: contactId, tag_ids: [tagId] } });
+        this.log({ resultado: `etiqueta "${regra.etiqueta}" colocada`, contato: contactId, telefone: m.phone });
+        return;
+      }
       const { column, pipelineId } = await this.coluna(destino);
       const r = await this.revvy.request(`/api/v1/deals?contact_id=${encodeURIComponent(contactId)}&limit=50`);
       const list = (r.data || r.deals || []).filter((d) => (d.contact_id ?? d.contact?.id ?? contactId) === contactId);
